@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="./logo.png" width="450" />
+  <img src="./logo.png" width="200" />
   
   # meow
 
@@ -18,8 +18,8 @@ python3 meow.py [args]
 
 ### To do
 
-- [ ] Create icon
-- [ ] Update README with images
+- [x] Create icon
+- [x] Update README with images
 - [ ] Finish Stitcher-class
 - [ ] Add object detector for detecting football
 - [ ] Add intelligent video concatenator
