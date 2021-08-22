@@ -1,5 +1,20 @@
-# meow
-Stich two videos together to form a panorama video. For recording football games. Inspired by Veo.
+<div align="center">
+  <img src="./logo.png" width="450" />
+  
+  # meow
+
+  Stich two videos together to form a panorama video. For recording football games. Inspired by Veo.
+  <br/><br/>
+
+</div>
+
+## Quickstart
+
+**To do**
+
+```python3
+python3 meow.py [args]
+```
 
 ### To do
 
