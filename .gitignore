@@ -39,3 +39,6 @@ ENV/
 env.bak/
 venv.bak/
 
+# Data-folder
+data/*
+!data/.gitkeep
