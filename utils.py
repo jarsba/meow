@@ -41,6 +41,14 @@ def extract_filename_without_extension(path) -> str:
     return filename
 
 
-def split_file_from_extension(path) -> Tuple[str, str]:
+# Split file path from extension and convert file extension to lower case
+def split_file_from_extension(path, without_dot=True) -> Tuple[str, str]:
     filename, extension = os.path.splitext(path)
+    if without_dot:
+        extension = extension.replace('.', '').lower()
     return filename, extension
+
+
+def extract_folder_from_path(path) -> str:
+    return os.path.dirname(path)
+
