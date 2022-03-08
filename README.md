@@ -26,3 +26,4 @@ python3 meow.py [args]
 - [ ] Add intelligent video concatenator, if clips are in multiple parts
 - [ ] Add web-application for file drop
 - [ ] Add Youtube-integration
+- [ ] Add documentation, so anyone else can meow also with their cameras!
