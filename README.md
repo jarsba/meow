@@ -20,9 +20,9 @@ python3 meow.py [args]
 
 - [x] Create icon
 - [x] Update README with images
-- [ ] Finish Synchronizer-class that determines the timecode difference between clips
+- [x] Finish Synchronizer-class that determines the timecode difference between clips
 - [ ] Finish Stitcher-class that stitches the two synchronized clips together
 - [ ] Add object detector for detecting football
-- [ ] Add intelligent video concatenator
-- [ ] Add flask for file drop
+- [ ] Add intelligent video concatenator, if clips are in multiple parts
+- [ ] Add web-application for file drop
 - [ ] Add Youtube-integration
