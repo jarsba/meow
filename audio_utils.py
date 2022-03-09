@@ -5,6 +5,7 @@ import numpy as np
 from typing import Tuple
 import math
 from math_utils import safe_division
+from tqdm import tqdm
 
 
 def extract_audio(video_path) -> mp.AudioClip:
@@ -109,7 +110,7 @@ def calculate_audio_delay(audio1: np.ndarray, audio2: np.ndarray, sample_rate=44
     # We don't know which audio file is delayed compared to the other, so we need to run the analysis both ways,
     # first comparing audio1 window to audio2 start and then comparing audio2 windows to audio1 start
 
-    for i in range(windows_amount_1):
+    for i in tqdm(range(windows_amount_1)):
         window_start = window_increment * i
         window_end = min(window_start + window_size_1, audio1_length)
         audio1_window = audio1[window_start: window_end]
@@ -124,7 +125,7 @@ def calculate_audio_delay(audio1: np.ndarray, audio2: np.ndarray, sample_rate=44
     window_size_2 = math.floor(audio2_length / window_size_factor)
     windows_amount_2 = math.ceil((audio2_length - window_size_2) / window_increment)
 
-    for i in range(windows_amount_2):
+    for i in tqdm(range(windows_amount_2)):
         window_start = window_increment * i
         window_end = min(window_start + window_size_2, audio2_length)
         audio1_window = audio1[0: window_size_2]

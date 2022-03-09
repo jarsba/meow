@@ -52,3 +52,11 @@ def split_file_from_extension(path, without_dot=True) -> Tuple[str, str]:
 def extract_folder_from_path(path) -> str:
     return os.path.dirname(path)
 
+
+# Separate path to three parts: folder, filename, file extension
+def separate_path_to_parts(path) -> Tuple[str, str, str]:
+    filename = extract_filename_without_extension(path)
+    file_extension = split_file_from_extension(path)[1]
+    folder = extract_folder_from_path(path)
+
+    return folder, filename, file_extension
