@@ -42,3 +42,6 @@ venv.bak/
 # Data-folder
 data/*
 !data/.gitkeep
+
+# Files created in notebooks
+notebooks/*.wav
