@@ -25,7 +25,7 @@ def wav_to_numpy(wav_file_path) -> Tuple[int, np.array]:
     return sample_rate, audio_array
 
 
-def wav_to_blocks(wav_array: np.ndarray, block_size=882, overlap=441, aggregation_func=np.mean):
+def wav_to_blocks(wav_array: np.ndarray, block_size=882, overlap=441, aggregation_func=np.mean) -> np.ndarray:
     blocks = np.array([])
     array_length = len(wav_array)
     block_amount = math.ceil(array_length / (block_size - overlap))
@@ -70,8 +70,8 @@ def audio_mse_score(audio1, audio2, blocks=False):
     assert len(audio1) == len(audio2)
 
     if blocks:
-        audio1_blocks = np.array(wav_to_blocks(audio1, block_size=441, overlap=0))
-        audio2_blocks = np.array(wav_to_blocks(audio2, block_size=441, overlap=0))
+        audio1_blocks = wav_to_blocks(audio1, block_size=441, overlap=0)
+        audio2_blocks = wav_to_blocks(audio2, block_size=441, overlap=0)
         mse_score = (np.square(audio1_blocks - audio2_blocks)).mean()
     else:
         mse_score = (np.square(audio1 - audio2)).mean()
@@ -84,8 +84,8 @@ def audio_absolute_distance_score(audio1, audio2, blocks=False):
     assert len(audio1) == len(audio2)
 
     if blocks:
-        audio1_blocks = np.array(wav_to_blocks(audio1, block_size=441, overlap=0))
-        audio2_blocks = np.array(wav_to_blocks(audio2, block_size=441, overlap=0))
+        audio1_blocks = wav_to_blocks(audio1, block_size=441, overlap=0)
+        audio2_blocks = wav_to_blocks(audio2, block_size=441, overlap=0)
         distance_score = (np.abs(audio1_blocks - audio2_blocks)).sum()
     else:
         distance_score = (np.abs(audio1 - audio2)).sum()

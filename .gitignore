@@ -45,3 +45,9 @@ data/*
 
 # Files created in notebooks
 notebooks/*.wav
+
+# YoloV7
+yolov7/
+
+# Models
+models/*
