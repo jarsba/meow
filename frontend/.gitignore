@@ -1,0 +1,7 @@
+*.local
+*.log
+.DS_Store
+dist
+dist-ssr
+node_modules
+test_data

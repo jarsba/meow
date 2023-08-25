@@ -1,0 +1,9 @@
+# Data-folder
+data/*
+!data/.gitkeep
+
+# YoloV7
+yolov7/
+
+# Models
+models/*
