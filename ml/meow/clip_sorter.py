@@ -1,5 +1,6 @@
 from typing import Mapping, List
 
+from utils.video_utils import get_video_info, get_last_frame
 import cv2
 import numpy as np
 import logging
@@ -8,7 +9,6 @@ logger = logging.getLogger(__name__)
 
 
 def calculate_video_file_linking(video_file_paths: List[str], similarity_threshold: float = 5) -> List:
-    logger.info("Calculating video linking")
     frame_mapping = extract_end_frames(video_file_paths)
     similarity_matrix = calculate_similarity_matrix(frame_mapping)
 
@@ -35,19 +35,20 @@ def extract_end_frames(video_file_paths: List[str]) -> Mapping:
 
     for file_path in video_file_paths:
 
+        video_info = get_video_info(file_path)
+        duration = video_info['duration']
+
         capture = cv2.VideoCapture(file_path)
 
         # Read first frame
-        capture.set(cv2.CAP_PROP_FRAME_COUNT, 0)
+        capture.set(cv2.CAP_PROP_POS_FRAMES, 0)
         ret_first, first_frame = capture.read()
 
         # Read last frame
-        frame_count = capture.get(cv2.CAP_PROP_FRAME_COUNT)
-        capture.set(cv2.CAP_PROP_POS_FRAMES, frame_count - 2)
-        ret_last, last_frame = capture.read()
+        ret_last, last_frame = get_last_frame(capture, duration)
 
         if ret_first is False or ret_last is False:
-            print(f"Failed to read frame from video {file_path}, first frame: {ret_first}, last frame: {ret_last}")
+            logger.error(f"Failed to read frame from video {file_path}, first frame: {ret_first}, last frame: {ret_last}")
 
         frame_mapping[file_path] = {
             'first_frame': first_frame,

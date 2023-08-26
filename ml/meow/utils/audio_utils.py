@@ -4,8 +4,11 @@ from scipy.io.wavfile import read
 import numpy as np
 from typing import Tuple
 import math
-from math_utils import safe_division
+from .math_utils import safe_division
 from tqdm import tqdm
+from pydub import AudioSegment
+from scipy import signal
+import pyloudnorm as pyln
 
 
 def extract_audio(video_path) -> mp.AudioClip:
@@ -157,3 +160,32 @@ def calculate_audio_delay(audio1: np.ndarray, audio2: np.ndarray, sample_rate=44
             print(f"Audio 2 needs {delay_seconds} second delay")
 
     return delay_seconds
+
+
+def merge_audio_tracks(audio1: AudioSegment, audio2: AudioSegment):
+    merged_audios = audio1.overlay(audio2, position=0)
+    return merged_audios
+
+
+def normalize_audio(data: np.ndarray, samplerate: int, loudness_reduction=-12.0) -> np.ndarray:
+    meter = pyln.Meter(samplerate)
+    loudness = meter.integrated_loudness(data)
+    loudness_normalized_audio = pyln.normalize.loudness(data, loudness, loudness_reduction)
+
+    return loudness_normalized_audio
+
+
+def butter_lowpass_filter(data: np.ndarray, cutoff: float, fs: float, order: int = 5) -> np.ndarray:
+    nyq = 0.5 * fs
+    normal_cutoff = cutoff / nyq
+    b, a = signal.butter(order, normal_cutoff, btype='low', analog=False)
+    y = signal.filtfilt(b, a, data)
+    return y
+
+
+def butter_highpass_filter(data: np.ndarray, cutoff: float, fs: float, order: int = 5) -> np.ndarray:
+    nyq = 0.5 * fs
+    normal_cutoff = cutoff / nyq
+    b, a = signal.butter(order, normal_cutoff, btype='high', analog=False)
+    y = signal.filtfilt(b, a, data)
+    return y

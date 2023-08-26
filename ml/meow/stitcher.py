@@ -1,5 +1,5 @@
 
-from src.stitcher_base import StitcherBase
+from stitcher_base import StitcherBase
 import os
 from statistics import median
 import sys
@@ -7,7 +7,7 @@ import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 import logging
-from src.stitching_utils import resize_images, DEFAULT_LOW_MEGAPIX, DEFAULT_MEDIUM_MEGAPIX, DEFAULT_FINAL_MEGAPIX
+from stitching_utils import resize_images, DEFAULT_LOW_MEGAPIX, DEFAULT_MEDIUM_MEGAPIX, DEFAULT_FINAL_MEGAPIX
 
 from stitching.image_handler import ImageHandler
 from stitching.feature_detector import FeatureDetector

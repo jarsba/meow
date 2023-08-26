@@ -5,6 +5,8 @@ import cv2
 from tqdm import tqdm
 import numpy as np
 import logging
+import os
+import tempfile
 
 logger = logging.getLogger(__name__)
 
@@ -131,6 +133,9 @@ class AbsoluteDifferenceOpticalFlowMixer(VideoMixerBase):
 
                 masked_left = prepare_frame_with_mask(frame_left, mask_left)
                 masked_right = prepare_frame_with_mask(frame_right, mask_right)
+
+                cv2.imwrite(os.path.join(tempfile.gettempdir(), "mask_left.jpg"), masked_left)
+                cv2.imwrite(os.path.join(tempfile.gettempdir(), "mask_right.jpg"), masked_right)
 
                 prev_left = masked_left
                 prev_right = masked_right

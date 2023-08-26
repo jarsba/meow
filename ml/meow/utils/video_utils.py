@@ -7,6 +7,7 @@ from tempfile import NamedTemporaryFile
 import ffmpeg
 from moviepy.video.VideoClip import VideoClip
 from moviepy.editor import VideoFileClip, concatenate_videoclips
+import cv2
 import logging
 
 logger = logging.getLogger(__name__)
@@ -44,9 +45,21 @@ def ffmpeg_concatenate_video_clips(video_file_paths: List[str], output_path: str
         for video in video_file_paths:
             f.write(f"file {video}\n")
 
-    print(merged_video_list_file.name)
-
     merged_video_list_file.seek(0)
 
     ffmpeg.input(merged_video_list_file.name,
                  format='concat', safe=0).output(output_path, codec='copy').run()
+
+
+def get_last_frame(capture, duration):
+    # Dirty hack to get to last 2 seconds to avoid reading to whole video file
+    capture.set(cv2.CAP_PROP_POS_MSEC, (duration - 2) * 1000)
+    last_frame = None
+    while True:
+        ret, tmp_frame = capture.read()
+        if not ret:
+            break
+        last_frame = tmp_frame
+
+    success = last_frame is not None
+    return success, last_frame

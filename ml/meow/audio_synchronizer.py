@@ -1,6 +1,9 @@
+from typing import Tuple
+
 import numpy as np
 from scipy import fft
 import logging
+from pydub import AudioSegment
 
 logger = logging.getLogger(__name__)
 
@@ -43,3 +46,37 @@ def calculate_synchronization_delay(audio1: np.array, audio2: np.array, samplera
         offset = xmax / samplerate
         logger.info(f"Audio 2 needs {offset} second delay")
         return -offset
+
+
+def synchronize_audios(audio1_path: np.array, audio2_path: np.array, delay: float) -> Tuple[AudioSegment, AudioSegment]:
+    audio1 = AudioSegment.from_wav(audio1_path)
+    audio2 = AudioSegment.from_wav(audio2_path)
+
+    final_duration = min(audio1.duration_seconds, audio2.duration_seconds) - abs(delay)
+
+    if delay >= 0:
+        logger.debug(f"Delay {audio1_path} by {delay} seconds")
+
+        audio1_start_time = delay
+        audio1_end_time = final_duration + delay
+        audio2_start_time = 0
+        audio2_end_time = final_duration
+
+        # Multiply by 1000 to get milliseconds for pydub
+        audio1_cut = audio1[audio1_start_time*1000:audio1_end_time*1000]
+        audio2_cut = audio2[audio2_start_time*1000:audio2_end_time*1000]
+
+    else:
+        logger.debug(f"Delay {audio2_path} by {delay} seconds")
+        delay = abs(delay)
+
+        audio1_start_time = 0
+        audio1_end_time = final_duration
+        audio2_start_time = delay
+        audio2_end_time = final_duration + delay
+
+        # Multiply by 1000 to get milliseconds for pydub
+        audio1_cut = audio1[audio1_start_time * 1000:audio1_end_time * 1000]
+        audio2_cut = audio2[audio2_start_time * 1000:audio2_end_time * 1000]
+
+    return audio1_cut, audio2_cut
