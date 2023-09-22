@@ -1,7 +1,7 @@
 from pathlib import Path
 import os
 from typing import Tuple
-
+from .string_utils import generate_random_string
 
 def format_filename(filename, extension):
     return f"{filename}.{extension}"
@@ -31,3 +31,10 @@ def separate_path_to_parts(path) -> Tuple[str, str, str]:
     folder = extract_folder_from_path(path)
 
     return folder, filename, file_extension
+
+
+def create_temporary_file_name_with_extension(base_folder, extension) -> str:
+    """Creates temporary file with random name and given extension in base folder and returns its path"""
+    filename = f"{generate_random_string()}.{extension}"
+    file_path = os.path.join(base_folder, filename)
+    return file_path

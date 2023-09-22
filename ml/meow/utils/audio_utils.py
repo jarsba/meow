@@ -43,11 +43,15 @@ def wav_to_blocks(wav_array: np.ndarray, block_size=882, overlap=441, aggregatio
 
 
 def stereo_to_mono(wav_array: np.ndarray):
-    mono_wav = wav_array.mean(axis=1)
+    # If wav_array is already mono and has one channel, return it
+    if wav_array.ndim == 1:
+        mono_wav = wav_array
+    else:
+        mono_wav = wav_array.mean(axis=1)
     return mono_wav
 
 
-def normalize_wav(wav_array: np.ndarray):
+def z_normalization(wav_array: np.ndarray):
     normalized_wav_array = 2. * (wav_array - np.min(wav_array)) / np.ptp(wav_array) - 1
     return normalized_wav_array
 
@@ -56,16 +60,22 @@ def contrast_audio(audio_array: np.ndarray, exponent=2):
     return audio_array ** exponent
 
 
-def preprocess_audio(audio_file_path: str, to_mono=True, normalize=False, contrast=False):
-    sample_rate, audio = read(audio_file_path)
+def preprocess_audio(audio_file_path: str, to_mono=True, z_normalize=False, normalize=False,
+                     high_pass=False, low_pass=False) -> Tuple[int, np.ndarray]:
+    samplerate, audio = read(audio_file_path)
     audio_data = np.array(audio, dtype=float)
     if to_mono:
         audio_data = stereo_to_mono(audio_data)
+    if z_normalize:
+        audio_data = z_normalization(audio_data)
     if normalize:
-        audio_data = normalize_wav(audio_data)
-    if contrast:
-        audio_data = contrast_audio(audio_data)
-    return audio_data
+        audio_data = normalize_audio(audio_data, samplerate)
+    if low_pass:
+        audio_data = butter_lowpass_filter(audio_data, 5000, samplerate)
+    if high_pass:
+        audio_data = butter_highpass_filter(audio_data, 1000, samplerate)
+
+    return samplerate, audio_data
 
 
 # Calculate MSE score between audio samples
@@ -171,20 +181,19 @@ def normalize_audio(data: np.ndarray, samplerate: int, loudness_reduction=-12.0)
     meter = pyln.Meter(samplerate)
     loudness = meter.integrated_loudness(data)
     loudness_normalized_audio = pyln.normalize.loudness(data, loudness, loudness_reduction)
-
     return loudness_normalized_audio
 
 
-def butter_lowpass_filter(data: np.ndarray, cutoff: float, fs: float, order: int = 5) -> np.ndarray:
-    nyq = 0.5 * fs
+def butter_lowpass_filter(data: np.ndarray, cutoff: float, samplerate: float, order: int = 5) -> np.ndarray:
+    nyq = 0.5 * samplerate
     normal_cutoff = cutoff / nyq
     b, a = signal.butter(order, normal_cutoff, btype='low', analog=False)
     y = signal.filtfilt(b, a, data)
     return y
 
 
-def butter_highpass_filter(data: np.ndarray, cutoff: float, fs: float, order: int = 5) -> np.ndarray:
-    nyq = 0.5 * fs
+def butter_highpass_filter(data: np.ndarray, cutoff: float, samplerate: float, order: int = 5) -> np.ndarray:
+    nyq = 0.5 * samplerate
     normal_cutoff = cutoff / nyq
     b, a = signal.butter(order, normal_cutoff, btype='high', analog=False)
     y = signal.filtfilt(b, a, data)

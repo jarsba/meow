@@ -29,13 +29,18 @@ def audio_fft_correlation(audio1, audio2):
 
 
 def calculate_synchronization_delay(audio1: np.array, audio2: np.array, samplerate=44100):
-    """Compare first audio clip to second audio clip and calculate offset in seconds to synchronize audio inputs.
+    """Compare first audio clip to second audio clip and calculate offset in seconds to synchronize audio inputs. If audios are very long, compare only the first 3 minutes of the audio.
 
     :param audio1: First audio as numpy array
     :param audio2: Second audio as numpy array
     :param samplerate: Samplerate of the audio. Must be the same for both clips
     :return: Positive offset if audio 1 needs delay and negative offset if audio 2 needs delay
     """
+
+    if min(len(audio1), len(audio2)) > 3 * 60 * samplerate:
+        audio1 = audio1[:3 * 60 * samplerate]
+        audio2 = audio2[:3 * 60 * samplerate]
+
     padsize, corr, ca, xmax = audio_fft_correlation(audio1, audio2)
 
     if xmax > padsize // 2:
@@ -63,8 +68,8 @@ def synchronize_audios(audio1_path: np.array, audio2_path: np.array, delay: floa
         audio2_end_time = final_duration
 
         # Multiply by 1000 to get milliseconds for pydub
-        audio1_cut = audio1[audio1_start_time*1000:audio1_end_time*1000]
-        audio2_cut = audio2[audio2_start_time*1000:audio2_end_time*1000]
+        audio1_cut = audio1[audio1_start_time * 1000:audio1_end_time * 1000]
+        audio2_cut = audio2[audio2_start_time * 1000:audio2_end_time * 1000]
 
     else:
         logger.debug(f"Delay {audio2_path} by {delay} seconds")
