@@ -1,0 +1,14 @@
+{
+	"folders": [
+		{
+			"path": "frontend/meow-ui"
+		},
+		{
+			"path": "../../tests/meow-ui-test"
+		},
+		{
+			"path": "frontend"
+		}
+	],
+	"settings": {}
+}

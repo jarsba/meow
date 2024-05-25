@@ -100,15 +100,13 @@ class AbsoluteDifferenceOpticalFlowMixer(VideoMixerBase):
 
     def mix_video_with_field_mask(self, video_capture_left: cv2.VideoCapture,
                                   video_capture_right: cv2.VideoCapture, video_output_path: str, flow_fps=5,
-                                  history_length=24, input_fps: int = 60, output_fps: int = 60,
+                                  history_length=24, input_fps: int = 30, output_fps: int = 30,
                                   output_height: int = 1080, output_width: int = 1920,
                                   fourcc: cv2.VideoWriter_fourcc = cv2.VideoWriter_fourcc('M', 'J', 'P',
                                                                                           'G')) -> cv2.VideoWriter:
 
         if output_fps > input_fps:
             raise ValueError("Output fps cannot be higher than input fps")
-
-        skip_frames = input_fps // output_fps
 
         left_n_frames = int(video_capture_left.get(cv2.CAP_PROP_FRAME_COUNT)) - 1
         right_n_frames = int(video_capture_right.get(cv2.CAP_PROP_FRAME_COUNT)) - 1
@@ -139,8 +137,11 @@ class AbsoluteDifferenceOpticalFlowMixer(VideoMixerBase):
                 masked_left = prepare_frame_with_mask(frame_left, mask_left)
                 masked_right = prepare_frame_with_mask(frame_right, mask_right)
 
-                cv2.imwrite(os.path.join(tempfile.gettempdir(), "mask_left.jpg"), masked_left)
-                cv2.imwrite(os.path.join(tempfile.gettempdir(), "mask_right.jpg"), masked_right)
+                temp_dir = tempfile.gettempdir()
+                cv2.imwrite(os.path.join(temp_dir, "mask_left.jpg"), masked_left)
+                cv2.imwrite(os.path.join(temp_dir, "mask_right.jpg"), masked_right)
+
+                logger.debug(f"Wrote mask file to {temp_dir}")
 
                 prev_left = masked_left
                 prev_right = masked_right

@@ -53,8 +53,8 @@ def synchronize_videos(video1_path: str, video2_path: str, delay: float, video1_
         ffmpeg_extract_subclip(video2_path, video2_start_time, video2_end_time, video2_output_path)
 
     else:
-        logger.debug(f"Delay {video2_path} by {delay} seconds")
         delay = abs(delay)
+        logger.debug(f"Delay {video2_path} by {delay} seconds")
 
         video1_start_time = 0
         video1_end_time = final_duration

@@ -70,10 +70,9 @@ def synchronize_audios(audio1_path: np.array, audio2_path: np.array, delay: floa
         # Multiply by 1000 to get milliseconds for pydub
         audio1_cut = audio1[audio1_start_time * 1000:audio1_end_time * 1000]
         audio2_cut = audio2[audio2_start_time * 1000:audio2_end_time * 1000]
-
     else:
-        logger.debug(f"Delay {audio2_path} by {delay} seconds")
         delay = abs(delay)
+        logger.debug(f"Delay {audio2_path} by {delay} seconds")
 
         audio1_start_time = 0
         audio1_end_time = final_duration
