@@ -1,126 +1,112 @@
 #include "app.h"
 
 #include <iostream>
-#include <mutex>
-#include <string>
 #include <thread>
-#include <vector>
 #include <opencv2/videoio.hpp>
-#include "image_stitcher.h"
-#include "stitching_param_generater.h"
-#include <stdexcept>
+#include "stitching_param_generator.h"
 
 App::App(const std::vector<std::string>& video_files, const std::string& output_folder, const std::string& file_name, double fps)
     : sensor_data_interface_(video_files), output_folder_(output_folder), file_name_(file_name), fps_(fps) {
-  
-  sensor_data_interface_.InitVideoCapture();
 
-  std::vector<cv::UMat> first_image_vector = std::vector<cv::UMat>(sensor_data_interface_.num_img_);
-  std::vector<cv::Mat> first_mat_vector = std::vector<cv::Mat>(sensor_data_interface_.num_img_);
-  std::vector<cv::UMat> reproj_xmap_vector;
-  std::vector<cv::UMat> reproj_ymap_vector;
-  std::vector<cv::UMat> undist_xmap_vector;
-  std::vector<cv::UMat> undist_ymap_vector;
-  std::vector<cv::Rect> image_roi_vect;
+    sensor_data_interface_.InitVideoCapture();
 
-  std::vector<std::mutex> image_mutex_vector(sensor_data_interface_.num_img_);
-  sensor_data_interface_.get_image_vector(first_image_vector, image_mutex_vector);
+    std::vector<cv::UMat> first_image_vector(sensor_data_interface_.num_img_);
+    std::vector<cv::Mat> first_mat_vector(sensor_data_interface_.num_img_);
+    std::vector<cv::UMat> reproj_xmap_vector;
+    std::vector<cv::UMat> reproj_ymap_vector;
+    std::vector<cv::UMat> undist_xmap_vector;
+    std::vector<cv::UMat> undist_ymap_vector;
+    std::vector<cv::Rect> image_roi_vect;
 
-  for (size_t i = 0; i < sensor_data_interface_.num_img_; ++i) {
-    first_image_vector[i].copyTo(first_mat_vector[i]);
-  }
+    sensor_data_interface_.get_initial_images(first_image_vector);
 
-  StitchingParamGenerator stitching_param_generator(first_mat_vector);
+    for (size_t i = 0; i < sensor_data_interface_.num_img_; ++i) {
+        first_image_vector[i].copyTo(first_mat_vector[i]);
+    }
 
-  stitching_param_generator.GetReprojParams(
-      undist_xmap_vector,
-      undist_ymap_vector,
-      reproj_xmap_vector,
-      reproj_ymap_vector,
-      image_roi_vect
-  );
+    StitchingParamGenerator stitching_param_generator(first_mat_vector);
 
-  image_stitcher_.SetParams(
-      100,
-      undist_xmap_vector,
-      undist_ymap_vector,
-      reproj_xmap_vector,
-      reproj_ymap_vector,
-      image_roi_vect
-  );
-  total_cols_ = 0;
-  for (size_t i = 0; i < sensor_data_interface_.num_img_; ++i) {
-    total_cols_ += image_roi_vect[i].width;
-  }
-  image_concat_umat_ = cv::UMat(image_roi_vect[0].height, total_cols_, CV_8UC3);
-  std::string output_path = output_folder_ + "/" + file_name_;
-  int fourcc = cv::VideoWriter::fourcc('M', 'J', 'P', 'G');
-  cv::Size frame_size(total_cols_, image_roi_vect[0].height);
+    stitching_param_generator.GetReprojParams(
+        undist_xmap_vector,
+        undist_ymap_vector,
+        reproj_xmap_vector,
+        reproj_ymap_vector,
+        image_roi_vect
+    );
 
-  video_writer_.open(output_path, fourcc, fps_, frame_size, true);
-  if (!video_writer_.isOpened()) {
-    throw std::runtime_error("Could not open the output video for write: " + output_path);
-  }
+    image_stitcher_.SetParams(
+        100,
+        undist_xmap_vector,
+        undist_ymap_vector,
+        reproj_xmap_vector,
+        reproj_ymap_vector,
+        image_roi_vect
+    );
+
+    total_cols_ = 0;
+    for (size_t i = 0; i < sensor_data_interface_.num_img_; ++i) {
+        total_cols_ += image_roi_vect[i].width;
+    }
+
+    // Initialize the video writer
+    std::string output_file = output_folder_ + "/" + file_name_;
+    int frame_width = total_cols_;
+    int frame_height = image_roi_vect[0].height;
+    video_writer_.open(output_file, cv::VideoWriter::fourcc('M', 'J', 'P', 'G'), fps_, cv::Size(frame_width, frame_height));
+    if (!video_writer_.isOpened()) {
+        throw std::runtime_error("Could not open the output video file for write: " + output_file);
+    }
+
+    image_concat_umat_.create(frame_height, frame_width, CV_8UC3);
 }
 
 void App::run_stitching() {
-  std::vector<cv::UMat> image_vector(sensor_data_interface_.num_img_);
-  std::vector<std::mutex> image_mutex_vector(sensor_data_interface_.num_img_);
-  std::vector<cv::UMat> images_warped_vector(sensor_data_interface_.num_img_);
-  std::thread record_videos_thread(
-      &SensorDataInterface::RecordVideos,
-      &sensor_data_interface_
-  );
+    auto start_time = std::chrono::high_resolution_clock::now();
+    std::vector<cv::UMat> image_vector(sensor_data_interface_.num_img_);
+    std::vector<cv::UMat> images_warped_vector(sensor_data_interface_.num_img_);
+    size_t frame_count = 0;
+    double total_frames = sensor_data_interface_.getTotalFrames();
 
-  int64_t t0, t1, t2, t3, tn;
+    while (true) {
+        sensor_data_interface_.get_image_vector(image_vector);
 
-  size_t frame_idx = 0;
-  while (true) {
-    t0 = cv::getTickCount();
+        if (sensor_data_interface_.all_videos_finished()) {
+            break;
+        }
 
-    std::vector<std::thread> warp_thread_vect;
-    sensor_data_interface_.get_image_vector(image_vector, image_mutex_vector);
-    t1 = cv::getTickCount();
+        for (size_t img_idx = 0; img_idx < sensor_data_interface_.num_img_; ++img_idx) {
+            image_stitcher_.WarpImages(
+                img_idx,
+                20,
+                image_vector,
+                images_warped_vector,
+                image_concat_umat_
+            );
+        }
 
-    for (size_t img_idx = 0; img_idx < sensor_data_interface_.num_img_; ++img_idx) {
-      warp_thread_vect.emplace_back(
-          &ImageStitcher::WarpImages,
-          &image_stitcher_,
-          img_idx,
-          20,
-          image_vector,
-          std::ref(image_mutex_vector),
-          std::ref(images_warped_vector),
-          std::ref(image_concat_umat_)
-      );
+        cv::Mat image_concat_mat;
+        image_concat_umat_.copyTo(image_concat_mat);
+        video_writer_.write(image_concat_mat);
+
+        frame_count++;
+        if (frame_count % static_cast<size_t>(fps_) == 0) {
+            auto current_time = std::chrono::high_resolution_clock::now();
+            std::chrono::duration<double> elapsed_seconds = current_time - start_time;
+            double fps = frame_count / elapsed_seconds.count();
+
+            double progress_percentage = (frame_count / total_frames) * 100;
+            double estimated_total_time = total_frames / fps;
+            double time_remaining = estimated_total_time - elapsed_seconds.count();
+
+            // Print the progress and time estimate
+            std::cout << "FPS: " << fps << ", Progress: " << progress_percentage << "%"
+                      << ", Time Remaining: " << time_remaining << " seconds" << std::endl;
+        }
     }
-    for (auto& warp_thread : warp_thread_vect) {
-      warp_thread.join();
+
+    if (video_writer_.isOpened()) {
+        video_writer_.release();
     }
-    t2 = cv::getTickCount();
-
-    cv::Mat image_concat_mat;
-    image_concat_umat_.copyTo(image_concat_mat);
-    video_writer_.write(image_concat_mat);
-
-    frame_idx++;
-    tn = cv::getTickCount();
-
-    std::cout << "[app] "
-              << double(t1 - t0) / cv::getTickFrequency() << ";"
-              << double(t2 - t1) / cv::getTickFrequency() << ";"
-              << 1 / (double(t2 - t0) / cv::getTickFrequency()) << " FPS; "
-              << 1 / (double(tn - t0) / cv::getTickFrequency()) << " Real FPS." << std::endl;
-
-    if (frame_idx > 1000) {
-      break;
-    }
-  }
-
-  // Release the video writer
-  if (video_writer_.isOpened()) {
-    video_writer_.release();
-  }
 }
 
 int main(int argc, char* argv[]) {

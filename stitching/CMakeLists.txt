@@ -15,7 +15,7 @@ include_directories(
 add_executable(${PROJECT_NAME}
         src/app.cc include/app.h
         src/sensor_data_interface.cc include/sensor_data_interface.h
-        src/stitching_param_generater.cc include/stitching_param_generater.h
+        src/stitching_param_generator.cc include/stitching_param_generator.h
         src/image_stitcher.cc include/image_stitcher.h)
 
 target_link_libraries(${PROJECT_NAME} ${OpenCV_LIBS} -lpthread -lm)

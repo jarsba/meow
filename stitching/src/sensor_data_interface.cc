@@ -1,96 +1,63 @@
 #include "sensor_data_interface.h"
-
 #include <string>
-#include <thread>
 
 SensorDataInterface::SensorDataInterface(const std::vector<std::string>& video_files)
-    : max_queue_length_(2), video_files_(video_files) {
+    : video_files_(video_files) {
   num_img_ = video_files_.size();
   image_queue_vector_ = std::vector<std::queue<cv::UMat>>(num_img_);
-  image_queue_mutex_vector_ = std::vector<std::mutex>(num_img_);
   video_finished_ = std::vector<bool>(num_img_, false);
+  total_frames_ = 0;
 }
 
 void SensorDataInterface::InitVideoCapture() {
   std::cout << "Initializing video capture..." << std::endl;
-  num_img_ = video_files_.size();
-  image_queue_vector_ = std::vector<std::queue<cv::UMat>>(num_img_);
-  image_queue_mutex_vector_ = std::vector<std::mutex>(num_img_);
-  video_finished_ = std::vector<bool>(num_img_, false);
 
-  for (int i = 0; i < num_img_; ++i) {
-    cv::VideoCapture capture(video_files_[i]);
-    if (!capture.isOpened())
-      std::cout << "Failed to open capture " << i << std::endl;
+  for (const auto& file : video_files_) {
+    cv::VideoCapture capture(file);
+    if (!capture.isOpened()) {
+      std::cerr << "Failed to open video file: " << file << std::endl;
+      video_finished_[&file - &video_files_[0]] = true;
+      continue;
+    }
     video_capture_vector_.push_back(capture);
-
-    cv::UMat frame;
-    capture.read(frame);
-    image_queue_vector_[i].push(frame);
+    total_frames_ = capture.get(cv::CAP_PROP_FRAME_COUNT);
   }
-  std::cout << "Done. " << num_img_ << " captures initialized." << std::endl;
+  std::cout << "Done. " << video_files_.size() << " captures initialized." << std::endl;
 }
 
-void SensorDataInterface::RecordVideos() {
-  size_t frame_idx = 0;
-  while (true) {
-    std::cout << "[DEBUG] Recording frame " << frame_idx << "." << std::endl;
+double SensorDataInterface::getTotalFrames() {
+  return total_frames_;
+}
 
-    for (int i = 0; i < num_img_; ++i) {
-      cv::UMat frame;
-      video_capture_vector_[i].read(frame);
 
-      if (frame.empty()) {
-        video_finished_[i] = true;
-        std::cout << "[DEBUG] DEBUGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG." << std::endl;
-        std::cout << "[DEBUG] Finished video with index " << i << "." << std::endl;
-      } else {
-        std::cout << "[DEBUG] Video finished debug " << "i: " << i << ", value: " << video_finished_[i] << "." << std::endl;
-
-        if (frame.rows > 0) {
-          image_queue_mutex_vector_[i].lock();
-          image_queue_vector_[i].push(frame);
-          if (image_queue_vector_[i].size() > max_queue_length_) {
-            image_queue_vector_[i].pop();
-          }
-          image_queue_mutex_vector_[i].unlock();
-        } else {
-          video_finished_[i] = true;
-          std::cout << "[DEBUG] DEBUGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG." << std::endl;
-          std::cout << "[DEBUG] Finished video with index " << i << "." << std::endl;
-        }
-      }
+void SensorDataInterface::get_initial_images(std::vector<cv::UMat>& image_vector) {
+  for (size_t i = 0; i < num_img_; ++i) {
+    cv::UMat frame;
+    video_capture_vector_[i].read(frame);
+    if (!frame.empty()) {
+      image_queue_vector_[i].push(frame);
+    } else {
+      video_finished_[i] = true;
     }
-    
-    std::cout << "[RecordVideos] recorded frame " << frame_idx << "." << std::endl;
-    frame_idx++;
-    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+    image_vector[i] = frame;
+  }
+}
 
-    if (all_videos_finished()) {
-        break;
+void SensorDataInterface::get_image_vector(std::vector<cv::UMat>& image_vector) {
+  for (size_t i = 0; i < num_img_; ++i) {
+    if (video_finished_[i]) {
+      continue;
+    }
+    cv::UMat frame;
+    video_capture_vector_[i].read(frame);
+    if (frame.empty()) {
+      video_finished_[i] = true;
+    } else {
+      image_vector[i] = frame;
     }
   }
 }
 
 bool SensorDataInterface::all_videos_finished() {
-  return std::all_of(video_finished_.begin(), video_finished_.end(),  [](bool finished) { return finished; });
-}
-
-void SensorDataInterface::get_image_vector(
-    std::vector<cv::UMat>& image_vector,
-    std::vector<std::mutex>& image_mutex_vector) {
-
-  std::cout << "[SensorDataInterface] Getting new images...";
-  for (size_t i = 0; i < num_img_; ++i) {
-    cv::Mat img_undistort;
-    cv::Mat img_cylindrical;
-
-    image_queue_mutex_vector_[i].lock();
-    image_mutex_vector[i].lock();
-    image_vector[i] = image_queue_vector_[i].front();
-    image_mutex_vector[i].unlock();
-    image_queue_mutex_vector_[i].unlock();
-  }
-  std::cout << " Done." << std::endl;
-
+  return std::all_of(video_finished_.begin(), video_finished_.end(), [](bool finished) { return finished; });
 }

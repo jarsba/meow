@@ -1,7 +1,7 @@
 // Created by s1nh.org on 2020/11/13.
 // Modified from samples/cpp/stitching_detailed.cpp
 
-#include "stitching_param_generater.h"
+#include "stitching_param_generator.h"
 
 #include <iostream>
 #include <fstream>
@@ -246,8 +246,6 @@ void StitchingParamGenerator::InitWarper() {
 
   std::vector<cv::Rect> projected_image_roi_vect = std::vector<cv::Rect>(num_img_);
 
-  // Update corners and sizes
-  // TODO(duchengyao): Figure out what bias means.
   Point roi_tl_bias(999999, 999999);
   for (int i = 0; i < num_img_; ++i) {
     // Update corner and size

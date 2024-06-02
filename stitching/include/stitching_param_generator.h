@@ -43,7 +43,7 @@ private:
   std::string seam_find_type = "no";
   int blend_type = cv::detail::Blender::MULTI_BAND;
   int timelapse_type = cv::detail::Timelapser::AS_IS;
-  float blend_strength = 5;
+  float blend_strength = 20;
   std::string result_name = "../results/result.jpg";
   bool timelapse = false;
   int range_width = -1;
