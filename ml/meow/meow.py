@@ -7,7 +7,7 @@ import os
 from dotenv import load_dotenv
 import contextlib
 from moviepy.audio.io.AudioFileClip import AudioFileClip
-
+from fast_stitching import call_image_stitching
 from clip_sorter import calculate_video_file_linking
 from video_synchronizer import synchronize_videos
 from utils.video_utils import ffmpeg_concatenate_video_clips, get_video_info
@@ -115,23 +115,29 @@ def run_with_args(left_videos: List[str], right_videos: List[str], output: str =
             right_stream = cv2.VideoCapture(synchronized_right_video_path)
 
             optical_flow_mixer = AbsoluteDifferenceOpticalFlowMixer()
-            mixed_video_path = create_temporary_file_name_with_extension(temp_dir, file_type)
+            processed_video_path = create_temporary_file_name_with_extension(temp_dir, file_type)
 
             logger.info("Starting mixing")
             optical_flow_mixer.mix_video_with_field_mask(video_capture_left=left_stream,
                                                          video_capture_right=right_stream,
-                                                         video_output_path=mixed_video_path, input_fps=input_fps,
+                                                         video_output_path=processed_video_path, input_fps=input_fps,
                                                          output_fps=output_fps)
         elif use_panorama_stitching:
-            logger.warning("Stitcher is not ready yet, please use video mixer")
-            sys.exit(1)
+            logger.info("Starting video stitching")
+            processed_video_path = call_image_stitching(
+                output_dir=temp_dir,
+                output_filename="stitching_result.mp4",
+                fps=output_fps,
+                left_file_path=synchronized_left_video_path,
+                right_file_path=synchronized_right_video_path
+            )
 
         if upload_to_Youtube:
             logger.warning("Youtube upload is not ready yet, please use regular file download")
             sys.exit(1)
         else:
             final_video_path = output
-            input_video = ffmpeg.input(mixed_video_path)
+            input_video = ffmpeg.input(processed_video_path)
             input_audio = ffmpeg.input(merged_audio_path)
 
             logger.info(f"Saving final output to file {final_video_path}")

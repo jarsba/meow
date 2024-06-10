@@ -1,5 +1,4 @@
 import os
-from moviepy.Clip import Clip
 from moviepy.tools import subprocess_call
 from moviepy.config import get_setting
 from utils.video_utils import get_video_info
