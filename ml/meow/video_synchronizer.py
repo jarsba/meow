@@ -8,19 +8,19 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def ffmpeg_extract_subclip(filename, t1, t2, targetname=None):
+def ffmpeg_extract_subclip(filename: str, t1: float, t2: float, target_name: str = None):
     """ Makes a new video file playing video file ``filename`` between
-    the times ``t1`` and ``t2``. """
+    the times ``t1`` and ``t2``. t1 and t2 are in seconds."""
     name, ext = os.path.splitext(filename)
-    if not targetname:
+    if not target_name:
         T1, T2 = [int(1000 * t) for t in [t1, t2]]
-        targetname = "%sSUB%d_%d.%s" % (name, T1, T2, ext)
+        target_name = "%sSUB%d_%d.%s" % (name, T1, T2, ext)
 
     cmd = [get_setting("FFMPEG_BINARY"), "-y",
            "-ss", "%0.2f" % t1,
            "-i", filename,
            "-t", "%0.2f" % (t2 - t1),
-           "-vcodec", "copy", "-acodec", "copy", targetname]
+           "-vcodec", "copy", "-acodec", "copy", target_name]
 
     subprocess_call(cmd)
 
@@ -33,6 +33,10 @@ def extract_subclip(input_video_path, start_time, end_time) -> VideoFileClip:
 
 # If delay is positive, audio1 needs to be delayed and negative if audio2 needs to be delayed
 def synchronize_videos(video1_path: str, video2_path: str, delay: float, video1_output_path: str, video2_output_path: str):
+    """Delay is calculated based on video1 relative position to video2. If delay is positive, video1 is playing delay
+    amount of time before video2 and video1 needs to delayed, meaning that we need to cut delay amount of time from the
+    start of video2. If delay is negative, we need to do opposite."""
+
     video1_info = get_video_info(video1_path)
     video2_info = get_video_info(video2_path)
 
@@ -40,7 +44,7 @@ def synchronize_videos(video1_path: str, video2_path: str, delay: float, video1_
 
     final_duration = min(video1_info['duration'], video2_info['duration']) - abs(delay)
 
-    if delay >= 0:
+    if delay < 0:
         logger.debug(f"Delay {video1_path} by {delay} seconds")
 
         video1_start_time = delay

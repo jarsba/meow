@@ -8,7 +8,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def calculate_video_file_linking(video_file_paths: List[str], similarity_threshold: float = 5) -> List:
+def calculate_video_file_linking(video_file_paths: List[str], similarity_threshold: float = 10) -> List:
     frame_mapping = extract_end_frames(video_file_paths)
     similarity_matrix = calculate_similarity_matrix(frame_mapping)
 

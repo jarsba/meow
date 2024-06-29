@@ -28,8 +28,9 @@ def audio_fft_correlation(audio1, audio2):
     return padsize, corr, ca, xmax
 
 
-def calculate_synchronization_delay(audio1: np.array, audio2: np.array, samplerate=44100):
-    """Compare first audio clip to second audio clip and calculate offset in seconds to synchronize audio inputs. If audios are very long, compare only the first 3 minutes of the audio.
+def calculate_synchronization_delay(audio1: np.array, audio2: np.array, samplerate: int = 44100, comparison_length_sec: int = 180) -> float:
+    """Compare first audio clip to second audio clip and calculate offset in seconds to synchronize audio inputs.
+    If audios are very long, compare only the first 3 minutes of the audio.
 
     :param audio1: First audio as numpy array
     :param audio2: Second audio as numpy array
@@ -37,9 +38,9 @@ def calculate_synchronization_delay(audio1: np.array, audio2: np.array, samplera
     :return: Positive offset if audio 1 needs delay and negative offset if audio 2 needs delay
     """
 
-    if min(len(audio1), len(audio2)) > 3 * 60 * samplerate:
-        audio1 = audio1[:3 * 60 * samplerate]
-        audio2 = audio2[:3 * 60 * samplerate]
+    if min(len(audio1), len(audio2)) > comparison_length_sec * samplerate:
+        audio1 = audio1[:comparison_length_sec * samplerate]
+        audio2 = audio2[:comparison_length_sec * samplerate]
 
     padsize, corr, ca, xmax = audio_fft_correlation(audio1, audio2)
 
@@ -54,12 +55,17 @@ def calculate_synchronization_delay(audio1: np.array, audio2: np.array, samplera
 
 
 def synchronize_audios(audio1_path: np.array, audio2_path: np.array, delay: float) -> Tuple[AudioSegment, AudioSegment]:
+    """Delay is calculated based on audio1 relative position to audio2. If delay is positive, audio1 is playing delay
+    amount of time before audio2 and audio1 needs to delayed, meaning that we need to cut delay amount of time from the
+    start of audio2. If delay is negative, we need to do opposite."""
+
     audio1 = AudioSegment.from_wav(audio1_path)
     audio2 = AudioSegment.from_wav(audio2_path)
 
     final_duration = min(audio1.duration_seconds, audio2.duration_seconds) - abs(delay)
 
-    if delay >= 0:
+    if delay < 0:
+        # Left video is ahead of right video by delay seconds
         logger.debug(f"Delay {audio1_path} by {delay} seconds")
 
         audio1_start_time = delay
@@ -71,6 +77,7 @@ def synchronize_audios(audio1_path: np.array, audio2_path: np.array, delay: floa
         audio1_cut = audio1[audio1_start_time * 1000:audio1_end_time * 1000]
         audio2_cut = audio2[audio2_start_time * 1000:audio2_end_time * 1000]
     else:
+        # Right video is ahead of left video by delay seconds
         delay = abs(delay)
         logger.debug(f"Delay {audio2_path} by {delay} seconds")
 

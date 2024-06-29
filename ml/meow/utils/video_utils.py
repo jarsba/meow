@@ -1,8 +1,7 @@
-from typing import Tuple, Dict, Union, Any, List
+from typing import Dict, Union, List
 
 from .eval_utils import eval_expr
 
-import sys
 from tempfile import NamedTemporaryFile
 import ffmpeg
 from moviepy.video.VideoClip import VideoClip
@@ -14,6 +13,14 @@ logger = logging.getLogger(__name__)
 
 
 def get_video_info(video_path) -> Dict[str, Union[int, float, str]]:
+    """
+    Return JSON representing video info:
+        file path
+        frame width in pixels
+        frame high in pixels
+        frame rate as FPS
+        duration in seconds
+    """
     probe = ffmpeg.probe(video_path)
     file_path = str(probe['format']['filename'])
     video_stream = next((stream for stream in probe['streams'] if stream['codec_type'] == 'video'), None)
