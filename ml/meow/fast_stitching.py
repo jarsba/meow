@@ -1,6 +1,7 @@
 import subprocess
 import os
-from typing import Optional
+from enum import Enum
+from typing import Optional, Callable
 import logging
 import argparse
 
@@ -9,15 +10,21 @@ logger = logging.getLogger(__name__)
 STICHING_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__name__)))), "stitching")
 BUILD_DIR = os.path.join(STICHING_DIR, "build")
 
+class TaskStatus(str, Enum):
+    STARTED = 'started'
+    FINISHED = 'finished'
+    FAILED = 'failed'
+
 
 def call_image_stitching(
         output_dir: str,
         output_filename: str,
         fps: int,
         left_file_path: str,
-        right_file_path: str
+        right_file_path: str,
+        progress_callback: Optional[Callable[[int], None]] = None
 ) -> Optional[str]:
-    logger.info(f"Starting fast image stitching")
+    logger.info("Starting fast image stitching")
 
     stitching_command = [
         './image-stitching',
@@ -29,23 +36,43 @@ def call_image_stitching(
     ]
 
     try:
-        result = subprocess.run(
+        # Use Popen instead of run to get real-time output
+        process = subprocess.Popen(
             stitching_command,
             cwd=BUILD_DIR,
-            check=True,  # Raises an error if the command exits with a non-zero status
-            capture_output=True,  # Capture the output for logging
-            text=True  # Return output as string rather than bytes
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=True,
+            bufsize=1
         )
 
-        logger.debug(f"Stitching output: {result.stdout}")
-        logger.debug(f"Stitching errors: {result.stderr}")
+        # Read output in real-time
+        while True:
+            output = process.stdout.readline()
+            if output == '' and process.poll() is not None:
+                break
+            if output:
+                if "PROGRESS" in output:
+                    progress = int(output.split(":")[1].strip())
+                    logger.info(f"Progress: {progress}%")
+                    if progress_callback:
+                        progress_callback(progress)
+                else:
+                    logger.debug(output.strip())
+
+        # Get the return code
+        return_code = process.poll()
+        if return_code != 0:
+            error = process.stderr.read()
+            logger.error(f"Stitching failed with code {return_code}: {error}")
+            return None
 
         output_file = os.path.join(output_dir, output_filename)
         return output_file
 
-    except subprocess.CalledProcessError as exc:
+    except Exception as exc:
         logger.exception("Exception happened during video stitching", exc_info=exc)
-        return None
+        raise exc
 
 
 if __name__ == "__main__":
@@ -58,8 +85,13 @@ if __name__ == "__main__":
     parser.add_argument("-l", "--left-video", required=True, dest='left_video', help="path to the left video file")
     parser.add_argument("-r", "--right-video", required=True, dest='right_video',
                         help="path to the right video file")
+    parser.add_argument("-v", "--verbose", action='store_true', dest='verbose', help="verbose output")
 
     args = parser.parse_args()
+
+    if args.verbose:
+        logging.basicConfig(level=logging.DEBUG)
+
     args_dict = vars(args)
 
     video_path = call_image_stitching(output_dir=args_dict["output_directory"], output_filename=args_dict["file_name"],

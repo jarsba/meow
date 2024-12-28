@@ -1,0 +1,16 @@
+# Meow backend
+
+
+## Components
+
+- `main.py`: The main entry point for the FastAPI application.
+- `routes.py`: Defines the API routes for the application.
+- `db.py`: Defines the database connection and operations.
+- `connection_manager.py`: Defines the WebSocket connection manager.
+
+## How to run
+
+uvicorn main:app --reload --port 8888
+
+
+

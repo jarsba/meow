@@ -1,7 +1,7 @@
 import os
 from moviepy.tools import subprocess_call
 from moviepy.config import get_setting
-from utils.video_utils import get_video_info
+from .utils.video_utils import get_video_info
 from moviepy.video.io.VideoFileClip import VideoFileClip
 import logging
 
@@ -44,7 +44,7 @@ def synchronize_videos(video1_path: str, video2_path: str, delay: float, video1_
 
     final_duration = min(video1_info['duration'], video2_info['duration']) - abs(delay)
 
-    if delay < 0:
+    if delay > 0:
         logger.debug(f"Delay {video1_path} by {delay} seconds")
 
         video1_start_time = delay

@@ -84,20 +84,20 @@ void ImageStitcher::WarpImages(
     std::vector<cv::UMat>& images_warped_with_roi_vector,
     cv::UMat& image_concat_umat) {
 
-    // std::cout << "[WarpImages] Warping images " << img_idx << " of " << num_img_ << "..." << std::endl;
-    int64_t t0, t1, t2, t3, t4, t5, t6, tn;
-    t0 = cv::getTickCount();
-    t1 = cv::getTickCount();
+    // Initialize or clear the concat image with black
+    if (img_idx == 0) {
+        image_concat_umat.setTo(cv::Scalar(0, 0, 0));
+    }
 
-    // std::cout << "[WarpImages] Remapping " << img_idx << ":" << num_img_ << " ..." << std::endl;
+    // Remap with black border
     remap(image_vector[img_idx],
           tmp_umat_vect_[img_idx],
           final_xmap_vector_[img_idx],
           final_ymap_vector_[img_idx],
-          cv::INTER_LINEAR);
-    // std::cout << "[WarpImages] Remapped " << img_idx << ":" << num_img_ << " ..." << std::endl;
-    t2 = cv::getTickCount();
-    t3 = cv::getTickCount();
+          cv::INTER_LINEAR,
+          cv::BORDER_CONSTANT,  // Use constant border
+          cv::Scalar(0, 0, 0)   // Black color for borders
+    );
 
     if (img_idx > 0) {
         cv::UMat _r = tmp_umat_vect_[img_idx](cv::Rect(
@@ -124,13 +124,4 @@ void ImageStitcher::WarpImages(
 
     tmp_umat_vect_[img_idx](roi_vect_[img_idx]).copyTo(
         image_concat_umat(cv::Rect(cols, 0, roi_vect_[img_idx].width, roi_vect_[img_idx].height))
-    );
-
-    tn = cv::getTickCount();
-    //std::cout << "[WarpImages] Warped images " << img_idx << " of " << num_img_ << ". ("
-    //          << double(t1 - t0) / cv::getTickFrequency() << ";"
-    //          << double(t2 - t1) / cv::getTickFrequency() << ";"
-    //          << double(t3 - t2) / cv::getTickFrequency() << ";"
-    //          << 1. / double(tn - t0) * cv::getTickFrequency() << ")"
-    //          << std::endl;
-}
+    );}

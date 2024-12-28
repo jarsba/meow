@@ -1,0 +1,16 @@
+# Run frontend
+
+## Components
+
+- `main.tsx`: The main entry point for the React application.
+- `components/`: Contains the components for the application.
+- `views/`: Contains the views for the application.
+- `services/`: Contains the services for the application.
+
+## How to run
+
+npm run dev
+
+## Theme
+
+- `@radix-ui/themes` is used for the theme.

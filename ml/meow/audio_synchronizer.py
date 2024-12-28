@@ -2,6 +2,9 @@ from typing import Tuple
 
 import numpy as np
 from scipy import fft
+from scipy.signal import correlate
+import soundfile as sf
+import librosa
 import logging
 from pydub import AudioSegment
 
@@ -54,8 +57,121 @@ def calculate_synchronization_delay(audio1: np.array, audio2: np.array, samplera
         return -offset
 
 
+def calculate_robust_audio_delay(file1_path, file2_path):
+    """
+    Calculate the delay between two audio files using cross-correlation.
+    Returns delay in milliseconds.
+
+    Parameters:
+    file1_path (str): Path to first audio file
+    file2_path (str): Path to second audio file
+
+    Returns:
+    float: Delay in milliseconds (positive if file2 is delayed relative to file1)
+    """
+    # Load audio files using librosa (resamples automatically)
+    y1, sr1 = librosa.load(file1_path)
+    y2, sr2 = librosa.load(file2_path)
+
+    # Ensure both arrays are the same length
+    min_length = min(len(y1), len(y2))
+    y1 = y1[:min_length]
+    y2 = y2[:min_length]
+
+    # Apply preprocessing to reduce noise impact
+    # High-pass filter to reduce wind noise
+    y1_filtered = librosa.effects.preemphasis(y1)
+    y2_filtered = librosa.effects.preemphasis(y2)
+
+    # Normalize the signals
+    y1_normalized = y1_filtered / np.sqrt(np.sum(y1_filtered ** 2))
+    y2_normalized = y2_filtered / np.sqrt(np.sum(y2_filtered ** 2))
+
+    # Compute cross-correlation
+    correlation = correlate(y1_normalized, y2_normalized, mode='full')
+
+    # Find the peak in the correlation
+    max_correlation_idx = np.argmax(correlation)
+
+    # Calculate delay in samples
+    delay_samples = max_correlation_idx - (len(y1_normalized) - 1)
+
+    # Convert to milliseconds
+    delay_ms = (delay_samples / sr1) * 1000
+
+    # Calculate confidence score based on correlation peak height
+    max_correlation = np.max(correlation)
+    confidence = max_correlation
+
+    logger.info(f"Delay: {delay_ms:.2f} ms")
+    logger.info(f"Confidence: {confidence:.2f}")
+
+    return {
+        'delay_ms': delay_ms,
+        'confidence': confidence,
+        'delay_samples': delay_samples
+    }
+
+def mix_audio_tracks(audio1: np.array, audio2: np.array, mix_ratio=(0.5, 0.5)) -> np.array:
+    # Create stereo mix
+    # Left channel: mix of both signals according to left_ratio
+    left = audio1 * mix_ratio[0] + audio2 * (1 - mix_ratio[0])
+    # Right channel: mix of both signals according to right_ratio
+    right = audio1 * (1 - mix_ratio[1]) + audio2 * mix_ratio[1]
+
+    # Combine into stereo array
+    stereo_mix = np.vstack((left, right)).T
+
+    return stereo_mix
+
+def sync_and_mix_audio(file1_path, file2_path, output_path, mix_ratio=(0.5, 0.5)):
+    """
+    Synchronize two audio files and mix them into a stereo file with specified balance.
+
+    Parameters:
+    file1_path (str): Path to first audio file
+    file2_path (str): Path to second audio file
+    output_path (str): Path to save mixed stereo file
+    mix_ratio (tuple): (left_ratio, right_ratio) for mixing the files (default: 0.5, 0.5)
+    """
+    # Calculate delay
+    result = calculate_robust_audio_delay(file1_path, file2_path)
+    delay_samples = result['delay_samples']
+
+    # Load both files
+    y1, sr = librosa.load(file1_path, mono=True)
+    y2, sr = librosa.load(file2_path, mono=True)
+
+    # Ensure both arrays are the same length
+    max_length = max(len(y1), len(y2))
+    y1 = np.pad(y1, (0, max(0, max_length - len(y1))), mode='constant')
+    y2 = np.pad(y2, (0, max(0, max_length - len(y2))), mode='constant')
+
+    # Apply the delay to y2
+    if delay_samples > 0:
+        y2 = np.pad(y2, (delay_samples, 0), mode='constant')[:-delay_samples]
+    else:
+        y2 = np.pad(y2, (0, -delay_samples), mode='constant')[-delay_samples:]
+
+    # Normalize both signals
+    y1 = y1 / np.max(np.abs(y1))
+    y2 = y2 / np.max(np.abs(y2))
+
+    stereo_mix = mix_audio_tracks(y1, y2)
+
+    # Save the result
+    sf.write(output_path, stereo_mix, sr, 'PCM_24')
+
+    return {
+        'delay_ms': result['delay_ms'],
+        'confidence': result['confidence'],
+        'sample_rate': sr,
+        'duration': len(stereo_mix) / sr
+    }
+
+
 def synchronize_audios(audio1_path: np.array, audio2_path: np.array, delay: float) -> Tuple[AudioSegment, AudioSegment]:
-    """Delay is calculated based on audio1 relative position to audio2. If delay is positive, audio1 is playing delay
+    """Delay is calculated based on audio1 relative position to audio2 in seconds. If delay is positive, audio1 is playing delay
     amount of time before audio2 and audio1 needs to delayed, meaning that we need to cut delay amount of time from the
     start of audio2. If delay is negative, we need to do opposite."""
 

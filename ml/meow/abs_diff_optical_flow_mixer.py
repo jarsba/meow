@@ -1,6 +1,6 @@
-from video_mixer_base import VideoMixerBase
-from field_detector import mask_field_from_image
-from optical_flow import absolute_difference_optical_flow
+from .video_mixer_base import VideoMixerBase
+from .field_detector import mask_field_from_image
+from .optical_flow import absolute_difference_optical_flow
 import cv2
 from tqdm import tqdm
 import numpy as np

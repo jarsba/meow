@@ -1,6 +1,7 @@
 from typing import Mapping, List
+import sys
 
-from utils.video_utils import get_video_info, get_last_frame
+from .utils.video_utils import get_video_info, get_last_frame
 import cv2
 import numpy as np
 import logging
@@ -8,7 +9,12 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def calculate_video_file_linking(video_file_paths: List[str], similarity_threshold: float = 10) -> List:
+def calculate_video_file_linking(video_file_paths: List[str], similarity_threshold: float = 5) -> List:
+
+    # Trivial case: only one video
+    if len(video_file_paths) == 1:
+        return video_file_paths
+
     frame_mapping = extract_end_frames(video_file_paths)
     similarity_matrix = calculate_similarity_matrix(frame_mapping)
 
@@ -24,6 +30,8 @@ def calculate_video_file_linking(video_file_paths: List[str], similarity_thresho
             add_edge(video_end_to_start_mapping, key2, key1)
         if value2 < similarity_threshold:
             add_edge(video_end_to_start_mapping, key1, key2)
+
+    logger.debug(video_end_to_start_mapping)
 
     video_file_linking = find_linking(video_end_to_start_mapping)
 
@@ -74,6 +82,8 @@ def calculate_similarity_matrix(frame_mapping: Mapping) -> Mapping:
 
                 similarity_matrix[(key1, key2)] = [first_vs_last, last_vs_first]
 
+    logger.debug(similarity_matrix)
+
     return similarity_matrix
 
 
@@ -103,11 +113,10 @@ def add_edge(mapping, node1, node2):
         mapping[node1] = [node2]
 
 
-def find_linking(mapping):
+def find_linking(mapping) -> List[str]:
     valid_linking = check_linking_valid(mapping)
     if valid_linking is False:
-        logger.warning("Cannot find linked list for videos mapping")
-        return None
+        raise RuntimeError("Cannot find linked list for videos mapping")
 
     childs = [value[0] for value in mapping.values()]
     keys = list(mapping.keys())
@@ -147,7 +156,10 @@ def check_linking_valid(mapping):
     next_node = None
     for _ in range(len(mapping)):
         next_nodes = mapping[last_node]
-        assert len(next_nodes) == 1
+        if len(next_nodes) != 1:
+            logger.error("Cannot determine video linking")
+            logger.debug(f"Video mapping: {mapping}")
+            sys.exit(1)
         next_node = next_nodes[0]
         visited_nodes.append(next_node)
         last_node = next_node

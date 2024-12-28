@@ -161,7 +161,6 @@ void StitchingParamGenerator::InitWarper() {
             focals[focals.size() / 2]) * 0.5f;
 
   Ptr<WarperCreator> warper_creator;
-#ifdef HAVE_OPENCV_CUDAWARPING
   if (try_cuda && cuda::getCudaEnabledDeviceCount() > 0) {
     if (warp_type == "plane")
       warper_creator = makePtr<cv::PlaneWarperGpu>();
@@ -169,9 +168,7 @@ void StitchingParamGenerator::InitWarper() {
       warper_creator = makePtr<cv::CylindricalWarperGpu>();
     else if (warp_type == "spherical")
       warper_creator = makePtr<cv::SphericalWarperGpu>();
-  } else
-#endif
-  {
+  } else {
     if (warp_type == "plane")
       warper_creator = makePtr<cv::PlaneWarper>();
     else if (warp_type == "affine")

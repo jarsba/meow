@@ -4,6 +4,7 @@
 #include <thread>
 #include <opencv2/videoio.hpp>
 #include "stitching_param_generator.h"
+#include <opencv2/imgproc.hpp>
 
 App::App(const std::vector<std::string>& video_files, const std::string& output_folder, const std::string& file_name, double fps)
     : sensor_data_interface_(video_files), output_folder_(output_folder), file_name_(file_name), fps_(fps) {
@@ -60,12 +61,53 @@ App::App(const std::vector<std::string>& video_files, const std::string& output_
     image_concat_umat_.create(frame_height, frame_width, CV_8UC3);
 }
 
+// Add this helper function to find the largest interior rectangle
+cv::Rect findLargestInteriorRectangle(const cv::Mat& image) {
+    cv::Mat gray, binary;
+    cv::cvtColor(image, gray, cv::COLOR_BGR2GRAY);
+    cv::threshold(gray, binary, 1, 255, cv::THRESH_BINARY); // Threshold to separate black borders
+
+    cv::Rect largest_rect(0, 0, 0, 0);
+    int max_area = 0;
+    
+    // Scan through possible top-left points
+    for(int y = 0; y < binary.rows; y++) {
+        for(int x = 0; x < binary.cols; x++) {
+            if(binary.at<uchar>(y,x) == 0) continue; // Skip black pixels
+            
+            // For each point, find largest possible rectangle
+            int max_width = binary.cols - x;
+            int max_height = binary.rows - y;
+            
+            // Find maximum width
+            for(int w = max_width; w > largest_rect.width; w--) {
+                // Find maximum height for this width
+                for(int h = max_height; h > 0; h--) {
+                    cv::Rect rect(x, y, w, h);
+                    cv::Mat roi = binary(rect);
+                    if(cv::countNonZero(roi) == roi.total()) { // If no black pixels
+                        int area = w * h;
+                        if(area > max_area) {
+                            max_area = area;
+                            largest_rect = rect;
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    return largest_rect;
+}
+
 void App::run_stitching() {
     auto start_time = std::chrono::high_resolution_clock::now();
     std::vector<cv::UMat> image_vector(sensor_data_interface_.num_img_);
     std::vector<cv::UMat> images_warped_vector(sensor_data_interface_.num_img_);
     size_t frame_count = 0;
     double total_frames = sensor_data_interface_.getTotalFrames();
+    cv::Rect crop_rect;
+    bool crop_rect_initialized = false;
 
     while (true) {
         sensor_data_interface_.get_image_vector(image_vector);
@@ -86,19 +128,38 @@ void App::run_stitching() {
 
         cv::Mat image_concat_mat;
         image_concat_umat_.copyTo(image_concat_mat);
-        video_writer_.write(image_concat_mat);
+
+        // Find the crop rectangle on the first frame
+        if (!crop_rect_initialized) {
+            crop_rect = findLargestInteriorRectangle(image_concat_mat);
+            crop_rect_initialized = true;
+
+            // Reinitialize video writer with new dimensions
+            if (video_writer_.isOpened()) {
+                video_writer_.release();
+            }
+            std::string output_file = output_folder_ + "/" + file_name_;
+            video_writer_.open(output_file, 
+                             cv::VideoWriter::fourcc('M', 'J', 'P', 'G'), 
+                             fps_, 
+                             cv::Size(crop_rect.width, crop_rect.height));
+        }
+
+        // Crop the frame
+        cv::Mat cropped_frame = image_concat_mat(crop_rect);
+        video_writer_.write(cropped_frame);
 
         frame_count++;
-        if (frame_count % static_cast<size_t>(fps_) == 0) {
+        if (frame_count % static_cast<size_t>(fps_ * 5) == 0) {
             auto current_time = std::chrono::high_resolution_clock::now();
             std::chrono::duration<double> elapsed_seconds = current_time - start_time;
             double fps = frame_count / elapsed_seconds.count();
-
             double progress_percentage = (frame_count / total_frames) * 100;
             double estimated_total_time = total_frames / fps;
             double time_remaining = estimated_total_time - elapsed_seconds.count();
 
-            // Print the progress and time estimate
+            
+            std::cout << "PROGRESS:" << static_cast<int>(progress_percentage) << std::endl;
             std::cout << "FPS: " << fps << ", Progress: " << progress_percentage << "%"
                       << ", Time Remaining: " << time_remaining << " seconds" << std::endl;
         }

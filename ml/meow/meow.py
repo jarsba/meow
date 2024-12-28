@@ -1,27 +1,30 @@
 import argparse
+from enum import Enum
+
 import sys
-from typing import List, Optional
+from typing import List, Optional, Callable, Dict
 import tempfile
 import re
 import os
 from dotenv import load_dotenv
 import contextlib
 from moviepy.audio.io.AudioFileClip import AudioFileClip
-from fast_stitching import call_image_stitching
-from clip_sorter import calculate_video_file_linking
-from video_synchronizer import synchronize_videos, ffmpeg_extract_subclip
-from utils.video_utils import ffmpeg_concatenate_video_clips, get_video_info
-from utils.audio_utils import merge_audio_tracks, preprocess_audio
-from utils.file_utils import create_temporary_file_name_with_extension
-from audio_synchronizer import calculate_synchronization_delay, synchronize_audios
-from abs_diff_optical_flow_mixer import AbsoluteDifferenceOpticalFlowMixer
+
+from .fast_stitching import call_image_stitching
+from .clip_sorter import calculate_video_file_linking
+from .video_synchronizer import synchronize_videos, ffmpeg_extract_subclip
+from .utils.video_utils import ffmpeg_concatenate_video_clips, get_video_info
+from .utils.file_utils import create_temporary_file_name_with_extension
+from .audio_synchronizer import sync_and_mix_audio
+from .abs_diff_optical_flow_mixer import AbsoluteDifferenceOpticalFlowMixer
+from .youtube_uploader import upload_video
 import ffmpeg
 import cv2
 import logging
 
 load_dotenv()
 
-LOG_LEVEL = os.getenv("LOG_LEVEL")
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 
 LOG_LEVEL_STR_MAPPING = {
     'INFO': logging.INFO,
@@ -32,10 +35,18 @@ logging.basicConfig(level=LOG_LEVEL_STR_MAPPING[LOG_LEVEL])
 logger = logging.getLogger(__name__)
 
 
+class TaskStatus(str, Enum):
+    STARTED = 'started'
+    FINISHED = 'finished'
+    FAILED = 'failed'
+
+
 def run_with_args(left_videos: List[str], right_videos: List[str], output: str = 'meow_output.mp4',
                   use_mixer: bool = True, use_panorama_stitching: bool = False, upload_to_Youtube: bool = False,
                   file_type: str = "mp4", output_fps: int = 30, save_intermediate: bool = False,
-                  output_directory: str = None, start_time: Optional[float] = None, end_time: Optional[float] = None, *args, **kwargs):
+                  output_directory: str = None, start_time: Optional[float] = None, end_time: Optional[float] = None,
+                  progress_callback: Callable[[str, TaskStatus, int], None] = None,
+                  youtube_title: str = "Meow Match Video", *args, **kwargs):
     """Run meow process:
         1. Sort videos
         2. Concatenate videos
@@ -48,134 +59,170 @@ def run_with_args(left_videos: List[str], right_videos: List[str], output: str =
         9. Either return link to download video or upload to Youtube (not supported yet)
     """
 
-    logger.info("Starting meow")
-    logger.debug(f"Arguments: {locals()}")
-    video_info = get_video_info(left_videos[0])
-    input_fps = round(video_info['frame_rate'])
-    logger.debug(f"Input FPS: {input_fps}")
+    try:
+        if progress_callback:
+            progress_callback("Video processing", TaskStatus.STARTED, 5)
 
-    logger.info("Calculating video linking")
-    left_videos_sorted = calculate_video_file_linking(left_videos)
-    logger.debug(f"Sorted left videos: {left_videos_sorted}")
-    right_videos_sorted = calculate_video_file_linking(right_videos)
-    logger.debug(f"Sorted right videos: {right_videos_sorted}")
+        logger.info("Starting meow")
+        logger.debug(f"Arguments: {locals()}")
+        video_info = get_video_info(left_videos[0])
+        input_fps = round(video_info['frame_rate'])
+        logger.debug(f"Input FPS: {input_fps}")
 
-    output_directory = output_directory if output_directory is not None else tempfile.mkdtemp()
+        if progress_callback:
+            progress_callback("Sorting videos", TaskStatus.STARTED, 5)
 
-    with (contextlib.nullcontext(output_directory)
-    if save_intermediate is True
-    else tempfile.TemporaryDirectory()
-    ) as temp_dir:
-        logger.info(f"Writing files to {'temporary' if save_intermediate is True else 'output'} directory {temp_dir}")
-        left_video_path = create_temporary_file_name_with_extension(temp_dir, file_type)
-        right_video_path = create_temporary_file_name_with_extension(temp_dir, file_type)
+        logger.info("Calculating video linking")
+        left_videos_sorted = calculate_video_file_linking(left_videos)
+        right_videos_sorted = calculate_video_file_linking(right_videos)
+        logger.debug(f"Sorted left videos: {left_videos_sorted}")
+        logger.debug(f"Sorted right videos: {right_videos_sorted}")
 
-        # Concatenate videos with ffmpeg concat-demuxer, because it is the fastest way to concat long video files.
-        logger.info("Concatenating files")
-        ffmpeg_concatenate_video_clips(left_videos_sorted, left_video_path)
-        ffmpeg_concatenate_video_clips(right_videos_sorted, right_video_path)
+        if progress_callback:
+            progress_callback("Sorting videos", TaskStatus.FINISHED, 10)
 
-        left_audio_path = create_temporary_file_name_with_extension(temp_dir, 'wav')
-        right_audio_path = create_temporary_file_name_with_extension(temp_dir, 'wav')
+        output_directory = output_directory if output_directory is not None else tempfile.mkdtemp()
 
-        # Write audio as mono for synchronization
-        logger.info("Writing audio files")
-        AudioFileClip(left_video_path).write_audiofile(left_audio_path, ffmpeg_params=["-ac", "1"])
-        AudioFileClip(right_video_path).write_audiofile(right_audio_path, ffmpeg_params=["-ac", "1"])
-        logger.debug(f"Writing audio, files found from {left_audio_path} for left "
-                     f"and {right_audio_path} for right")
+        with (contextlib.nullcontext(output_directory)
+        if save_intermediate is True
+        else tempfile.TemporaryDirectory()
+        ) as temp_dir:
+            logger.info(
+                f"Writing files to {'temporary' if save_intermediate is True else 'output'} directory {temp_dir}")
 
-        samplerate1, preprocessed_audio1 = preprocess_audio(left_audio_path, to_mono=True, high_pass=False)
-        samplerate2, preprocessed_audio2 = preprocess_audio(right_audio_path, to_mono=True, high_pass=False)
+            if progress_callback:
+                progress_callback("Concatenating files", TaskStatus.STARTED, 10)
 
-        assert samplerate1 == samplerate2
+            # Concatenate videos with ffmpeg concat-demuxer, because it is the fastest way to concat long video files.
+            logger.info("Concatenating files")
 
-        logger.info("Calculating synchronization delay")
-        delay = calculate_synchronization_delay(preprocessed_audio1, preprocessed_audio2, samplerate=samplerate1,
-                                                comparison_length_sec=30)
-        logger.debug(f"Delay: {delay}")
-        logger.info("Synchronizing audios")
-        audio1, audio2 = synchronize_audios(audio1_path=left_audio_path, audio2_path=right_audio_path, delay=delay)
-
-        logger.info("Synchronizing videos")
-        synchronized_left_video_path = create_temporary_file_name_with_extension(temp_dir, file_type)
-        synchronized_right_video_path = create_temporary_file_name_with_extension(temp_dir, file_type)
-        synchronize_videos(video1_path=left_video_path, video2_path=right_video_path, delay=delay,
-                           video1_output_path=synchronized_left_video_path,
-                           video2_output_path=synchronized_right_video_path)
-
-        logger.debug(f"Synchronized videos found from {synchronized_left_video_path} for left "
-                     f"and {synchronized_right_video_path} for right")
-
-        logger.info("Merging audiotracks")
-        merged_audio = merge_audio_tracks(audio1, audio2)
-        merged_audio_path = create_temporary_file_name_with_extension(temp_dir, 'wav')
-        merged_audio.export(merged_audio_path, format="wav")
-
-        if start_time is not None or end_time is not None:
-            # We need to cut video and audio according to the game start and end time
-            # We need to take to account delay as this will shift our start and game time
-            # Assumed that start time and end time is coming from left camera
-            # We subtract delay from start time if delay is positive (left camera video is delay sec. ahead of right)
-
-            if start_time is None and end_time is not None:
-                start_time = 0
-                end_time = end_time if delay > 0 else end_time - delay
-            elif start_time is not None and end_time is None:
-                start_time = start_time if delay > 0 else start_time
-                left_video_info = get_video_info(synchronized_left_video_path)
-                right_video_info = get_video_info(synchronized_right_video_path)
-                end_time = min(left_video_info["duration"], right_video_info["duration"])
+            if len(left_videos_sorted) == 1:
+                left_video_path = left_videos_sorted[0]
             else:
-                start_time = start_time if delay > 0 else start_time - delay
-                end_time = end_time if delay > 0 else end_time - delay
+                left_video_path = create_temporary_file_name_with_extension(temp_dir, file_type)
+                ffmpeg_concatenate_video_clips(left_videos_sorted, left_video_path)
 
-            preprocessed_video_left_path = create_temporary_file_name_with_extension(temp_dir, file_type)
-            preprocessed_video_right_path = create_temporary_file_name_with_extension(temp_dir, file_type)
-            ffmpeg_extract_subclip(synchronized_left_video_path, start_time, end_time, preprocessed_video_left_path)
-            ffmpeg_extract_subclip(synchronized_right_video_path, start_time, end_time, preprocessed_video_right_path)
+            if len(right_videos_sorted) == 1:
+                right_video_path = right_videos_sorted[0]
+            else:
+                right_video_path = create_temporary_file_name_with_extension(temp_dir, file_type)
+                ffmpeg_concatenate_video_clips(right_videos_sorted, right_video_path)
 
-            logger.debug(f"Cut videos found from {preprocessed_video_left_path} for left "
-                         f"and {preprocessed_video_right_path} for right")
+            left_audio_path = create_temporary_file_name_with_extension(temp_dir, 'wav')
+            right_audio_path = create_temporary_file_name_with_extension(temp_dir, 'wav')
 
-        else:
-            preprocessed_video_left_path = synchronized_left_video_path
-            preprocessed_video_right_path = synchronized_right_video_path
+            # Write audio as mono for synchronization
+            logger.info("Writing audio files")
+            AudioFileClip(left_video_path).write_audiofile(left_audio_path, ffmpeg_params=["-ac", "1"])
+            AudioFileClip(right_video_path).write_audiofile(right_audio_path, ffmpeg_params=["-ac", "1"])
+            logger.debug(f"Writing audio, files found from {left_audio_path} for left "
+                         f"and {right_audio_path} for right")
 
+            if progress_callback:
+                progress_callback("Concatenating files", TaskStatus.FINISHED, 15)
+                progress_callback("Synchronizing audio", TaskStatus.STARTED, 15)
 
-        if use_mixer:
-            logger.info("Starting video mixer")
-            left_stream = cv2.VideoCapture(preprocessed_video_left_path)
-            right_stream = cv2.VideoCapture(preprocessed_video_right_path)
+            logger.info("Calculating synchronization delay and synchronizing and merging audio")
+            merged_audio_path = create_temporary_file_name_with_extension(temp_dir, 'wav')
+            result = sync_and_mix_audio(left_audio_path, right_audio_path, merged_audio_path)
 
-            optical_flow_mixer = AbsoluteDifferenceOpticalFlowMixer()
-            processed_video_path = create_temporary_file_name_with_extension(temp_dir, file_type)
+            delay_ms = result["delay_ms"]
+            delay = delay_ms / 1000
 
-            logger.info("Starting mixing")
-            optical_flow_mixer.mix_video_with_field_mask(video_capture_left=left_stream,
-                                                         video_capture_right=right_stream,
-                                                         video_output_path=processed_video_path, input_fps=input_fps,
-                                                         output_fps=output_fps)
-        elif use_panorama_stitching:
-            # TODO: add ability to mix audio or combine after
-            logger.info("Starting video stitching")
-            processed_video_path = call_image_stitching(
-                output_dir=temp_dir,
-                output_filename="stitching_result.mp4",
-                fps=output_fps,
-                left_file_path=preprocessed_video_left_path,
-                right_file_path=preprocessed_video_right_path
-            )
+            if progress_callback:
+                progress_callback("Synchronizing audio", TaskStatus.FINISHED, 20)
+                progress_callback("Synchronizing videos", TaskStatus.STARTED, 20)
 
-        if upload_to_Youtube:
-            logger.warning("Youtube upload is not ready yet, please use regular file download")
-            sys.exit(1)
-        else:
+            logger.info("Synchronizing videos")
+            synchronized_left_video_path = create_temporary_file_name_with_extension(temp_dir, file_type)
+            synchronized_right_video_path = create_temporary_file_name_with_extension(temp_dir, file_type)
+            synchronize_videos(video1_path=left_video_path, video2_path=right_video_path, delay=delay,
+                               video1_output_path=synchronized_left_video_path,
+                               video2_output_path=synchronized_right_video_path)
+
+            if progress_callback:
+                progress_callback("Synchronizing videos", TaskStatus.FINISHED, 25)
+                progress_callback("Cutting videos", TaskStatus.STARTED, 25)
+
+            logger.debug(f"Synchronized videos found from {synchronized_left_video_path} for left "
+                         f"and {synchronized_right_video_path} for right")
+
+            if start_time is not None or end_time is not None:
+                # We need to cut video and audio according to the game start and end time
+                # We need to take to account delay as this will shift our start and game time
+                # Assumed that start time and end time is coming from left camera
+                # We subtract delay from start time if delay is positive (left camera video is delay sec. ahead of right)
+
+                if start_time is None and end_time is not None:
+                    start_time = 0
+                    end_time = end_time if delay > 0 else end_time - delay
+                elif start_time is not None and end_time is None:
+                    start_time = start_time if delay > 0 else start_time
+                    left_video_info = get_video_info(synchronized_left_video_path)
+                    right_video_info = get_video_info(synchronized_right_video_path)
+                    end_time = min(left_video_info["duration"], right_video_info["duration"])
+                else:
+                    start_time = start_time if delay > 0 else start_time - delay
+                    end_time = end_time if delay > 0 else end_time - delay
+
+                preprocessed_video_left_path = create_temporary_file_name_with_extension(temp_dir, file_type)
+                preprocessed_video_right_path = create_temporary_file_name_with_extension(temp_dir, file_type)
+                ffmpeg_extract_subclip(synchronized_left_video_path, start_time, end_time, preprocessed_video_left_path)
+                ffmpeg_extract_subclip(synchronized_right_video_path, start_time, end_time,
+                                       preprocessed_video_right_path)
+
+                logger.debug(f"Cut videos found from {preprocessed_video_left_path} for left "
+                             f"and {preprocessed_video_right_path} for right")
+
+            else:
+                preprocessed_video_left_path = synchronized_left_video_path
+                preprocessed_video_right_path = synchronized_right_video_path
+
+            if progress_callback:
+                progress_callback("Cutting videos", TaskStatus.FINISHED, 30)
+                progress_callback("Editing videos", TaskStatus.STARTED, 30)
+
+            if use_mixer:
+                if progress_callback:
+                    progress_callback("Mixing videos using optical flow", TaskStatus.STARTED, 30)
+                left_stream = cv2.VideoCapture(preprocessed_video_left_path)
+                right_stream = cv2.VideoCapture(preprocessed_video_right_path)
+
+                optical_flow_mixer = AbsoluteDifferenceOpticalFlowMixer()
+                processed_video_path = create_temporary_file_name_with_extension(temp_dir, file_type)
+
+                logger.info("Starting mixing")
+                optical_flow_mixer.mix_video_with_field_mask(
+                    video_capture_left=left_stream,
+                    video_capture_right=right_stream,
+                    video_output_path=processed_video_path,
+                    input_fps=input_fps,
+                    output_fps=output_fps,
+                    progress_callback=lambda p: progress_callback("Mixing videos", TaskStatus.STARTED,
+                                                                  int(30 + 50 * (p / 100))) if progress_callback else None
+                )
+            elif use_panorama_stitching:
+                if progress_callback:
+                    progress_callback("Stitching panorama video", TaskStatus.STARTED, 30)
+                processed_video_path = call_image_stitching(
+                    output_dir=temp_dir,
+                    output_filename="stitching_result.mp4",
+                    fps=output_fps,
+                    left_file_path=preprocessed_video_left_path,
+                    right_file_path=preprocessed_video_right_path,
+                    progress_callback=lambda p: progress_callback("Stitching video", TaskStatus.STARTED,
+                                                                  int(30 + 50 * (p / 100))) if progress_callback else None
+                )
+
+            if progress_callback:
+                progress_callback("Editing videos", TaskStatus.FINISHED, 80)
+                progress_callback("Finalizing video", TaskStatus.STARTED, 80)
+
+            # Final video assembly
             final_video_path = output
             input_video = ffmpeg.input(processed_video_path)
             input_audio = ffmpeg.input(merged_audio_path)
 
-            logger.info(f"Saving final output to file {final_video_path}")
             ffmpeg.output(
                 input_video.video,
                 input_audio.audio,
@@ -184,7 +231,49 @@ def run_with_args(left_videos: List[str], right_videos: List[str], output: str =
                 acodec='aac',
             ).run()
 
-            return final_video_path
+            if progress_callback:
+                progress_callback("Finalizing video", TaskStatus.FINISHED, 85)
+
+            if upload_to_Youtube:
+                if progress_callback:
+                    progress_callback("Uploading to YouTube", TaskStatus.STARTED, 85)
+                try:
+                    response = upload_video(
+                        video_file=final_video_path,
+                        title=youtube_title,
+                        description="Video created with meow https://github.com/jarsba/meow",
+                        tags=[],
+                        privacy_status="unlisted"
+                    )
+                    video_id = response['id']
+                    if progress_callback:
+                        progress_callback("Uploading to YouTube", TaskStatus.FINISHED, 100)
+                    return {
+                        'type': 'youtube',
+                        'url': f"https://youtu.be/{video_id}",
+                        'file_path': final_video_path
+                    }
+                except Exception as e:
+                    logger.error(f"YouTube upload failed: {str(e)}")
+                    # Fall back to file download if YouTube upload fails
+                    return {
+                        'type': 'file',
+                        'file_path': final_video_path
+                    }
+
+            if progress_callback:
+                progress_callback("Video processing", TaskStatus.FINISHED, 100)
+            else:
+                return {
+                    'type': 'file',
+                    'file_path': final_video_path
+                }
+
+    except Exception as e:
+        logger.error(f"Error in run_with_args: {str(e)}")
+        if progress_callback:
+            progress_callback(f"Error", TaskStatus.FAILED, 0, error=str(e))
+        raise
 
 
 def parse_arguments():
@@ -206,8 +295,10 @@ def parse_arguments():
                         help="save intermediate files")
     parser.add_argument("-od", "--output-directory", default=None, dest='output_directory',
                         help="path of the output directory")
-    parser.add_argument("-st", "--start-time", default=None, dest="start_time", help="start time of the game as HH:MM:SS string")
-    parser.add_argument("-et", "--end-time", default=None, dest="end_time", help="end time of the game as HH:MM:SS string")
+    parser.add_argument("-st", "--start-time", default=None, dest="start_time",
+                        help="start time of the game as HH:MM:SS string")
+    parser.add_argument("-et", "--end-time", default=None, dest="end_time",
+                        help="end time of the game as HH:MM:SS string")
     # Meta arguments
     parser.add_argument("-v", "--verbose", action='store_true', dest='verbose', help="verbose output")
     args = parser.parse_args()
@@ -228,12 +319,14 @@ def run():
 
     if args_dict['start_time'] is not None:
         start_time_components = args_dict['start_time'].split(":")
-        start_time = int(start_time_components[0]) * (60 * 60) + int(start_time_components[1]) * 60 + int(start_time_components[2])
+        start_time = int(start_time_components[0]) * (60 * 60) + int(start_time_components[1]) * 60 + int(
+            start_time_components[2])
         args_dict["start_time"] = start_time
 
     if args_dict['end_time'] is not None:
         end_time_components = args_dict['end_time'].split(":")
-        end_time = int(end_time_components[0]) * (60 * 60) + int(end_time_components[1]) * 60 + int(end_time_components[2])
+        end_time = int(end_time_components[0]) * (60 * 60) + int(end_time_components[1]) * 60 + int(
+            end_time_components[2])
         args_dict["end_time"] = end_time
 
     file_type = args_dict['file_type']
@@ -250,7 +343,6 @@ def run():
 
     video_path = run_with_args(left_videos=left_videos, right_videos=right_videos, **args_dict)
     logger.info(f"Video ready, path: {video_path}")
-
 
 
 if __name__ == "__main__":

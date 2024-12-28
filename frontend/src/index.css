@@ -2,25 +2,156 @@
 @tailwind components;
 @tailwind utilities;
 
+@font-face {
+  font-family: 'Inconsolata';
+  src: url('../assets/fonts/Inconsolata-Light.ttf') format('truetype');
+  font-weight: 300;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Inconsolata';
+  src: url('../assets/fonts/Inconsolata-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Inconsolata';
+  src: url('../assets/fonts/Inconsolata-Medium.ttf') format('truetype');
+  font-weight: 500;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Inconsolata';
+  src: url('../assets/fonts/Inconsolata-SemiBold.ttf') format('truetype');
+  font-weight: 600;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Inconsolata';
+  src: url('../assets/fonts/Inconsolata-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+}
+
 @layer base {
-    h1 {
-        @apply text-3xl;
-        @apply font-bold;
-    }
+  html {
+    font-family: 'Inconsolata', monospace;
+  }
 
-    h2 {
-        @apply text-2xl;
-    }
+  h1 {
+    @apply text-3xl;
+    @apply font-bold;
+    font-family: 'Inconsolata', monospace;
+  }
 
-    h3 {
-        @apply text-xl;
-    }
+  h2 {
+    @apply text-2xl;
+    font-family: 'Inconsolata', monospace;
+  }
 
-    h4 {
-        @apply text-lg;
-    }
+  h3 {
+    @apply text-xl;
+    font-family: 'Inconsolata', monospace;
+  }
 
-    a {
-        @apply text-blue-600 underline;
-    }
+  h4 {
+    @apply text-lg;
+    font-family: 'Inconsolata', monospace;
+  }
+
+  a {
+    @apply text-blue-600 underline;
+    font-family: 'Inconsolata', monospace;
+  }
+}
+
+:root {
+  --font-sans: 'Inconsolata', monospace;
+}
+
+body {
+  font-family: 'Inconsolata', monospace;
+  margin: 0;
+  padding: 0;
+}
+
+/* Add a subtle gradient overlay */
+.form-container {
+  background-color: var(--color-background);
+  border-radius: var(--radius-3);
+  box-shadow: var(--shadow-3);
+}
+
+.input-style {
+  @apply rounded-lg border-2 border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all duration-200;
+}
+
+.button-style {
+  background-color: var(--blue-9);
+  color: var(--gray-1);
+  border-radius: var(--radius-2);
+}
+
+.accordion-style {
+  @apply rounded-lg border border-gray-200 bg-white/90 backdrop-blur-sm shadow-sm;
+}
+
+/* Styled form components */
+.styled-input {
+  font-family: 'Inconsolata', monospace;
+  background-color: var(--color-background);
+  border: 1px solid var(--gray-6);
+  border-radius: var(--radius-3);
+  padding: var(--space-2);
+  width: 100%;
+  transition: all 0.2s ease;
+}
+
+.styled-input:hover {
+  border-color: var(--accent-8);
+}
+
+.styled-input:focus {
+  border-color: var(--accent-8);
+  box-shadow: 0 0 0 2px var(--accent-a3);
+  outline: none;
+}
+
+.styled-button {
+  font-family: 'Inconsolata', monospace;
+  background-color: var(--accent-9);
+  color: "white";
+  border-radius: var(--radius-2);
+  padding: var(--space-2) var(--space-4);
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.styled-button:hover {
+  background-color: var(--accent-10);
+}
+
+.card-container {
+  background-color: var(--color-background);
+  border-radius: var(--radius-4);
+  box-shadow: var(--shadow-3);
+  border: 1px solid var(--gray-4);
+  backdrop-filter: blur(8px);
+}
+
+/* Update accordion styles to use theme values */
+.accordion-style {
+  border-radius: var(--radius-3);
+  border: 1px solid var(--gray-4);
+  background-color: var(--color-background);
+  box-shadow: var(--shadow-1);
+}
+
+/* Update Text components to use Inconsolata */
+.rt-Text {
+  font-family: 'Inconsolata', monospace !important;
 }

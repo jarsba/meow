@@ -25,7 +25,7 @@ public:
 private:
   // Default command line args
   std::vector<cv::String> img_names;
-  bool try_cuda = true;
+  bool try_cuda = false;
   float conf_thresh = 1.f;
   float match_conf = 0.6f;
   std::string matcher_type = "homography";
@@ -35,7 +35,7 @@ private:
   cv::detail::WaveCorrectKind wave_correct = cv::detail::WAVE_CORRECT_HORIZ;
   bool save_graph = false;
   std::string save_graph_to;
-  std::string warp_type = "spherical";
+  std::string warp_type = "transverseMercator";
   int expos_comp_type = cv::detail::ExposureCompensator::GAIN_BLOCKS;
   int expos_comp_nr_feeds = 1;
   int expos_comp_nr_filtering = 2;

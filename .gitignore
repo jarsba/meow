@@ -38,3 +38,13 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+
+# Large files
+*.mp4
+*.MP4
+
+# OAuth credentials
+*_oauth.json
+
+# IDEA
+.idea
