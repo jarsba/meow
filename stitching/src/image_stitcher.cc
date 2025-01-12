@@ -104,44 +104,67 @@ void ImageStitcher::WarpImages(
         cols += roi_vect_[i].width;
     }
 
-    // Create ROI in destination
-    cv::UMat roi = image_concat_umat(cv::Rect(cols, 0, 
-                                             roi_vect_[img_idx].width,
-                                             roi_vect_[img_idx].height));
+    // Ensure ROI is valid
+    cv::Rect safe_roi = roi_vect_[img_idx];
+    safe_roi.x = std::max(0, safe_roi.x);
+    safe_roi.y = std::max(0, safe_roi.y);
+    safe_roi.width = std::min(safe_roi.width, tmp_umat_vect_[img_idx].cols - safe_roi.x);
+    safe_roi.height = std::min(safe_roi.height, tmp_umat_vect_[img_idx].rows - safe_roi.y);
 
-    // Blend with previous image if not first
-    if (img_idx > 0 && weightMap_.size() == 2) {
-        int blend_width = weightMap_[0].cols;
-        
-        // Get overlapping regions
-        cv::UMat curr_blend = tmp_umat_vect_[img_idx](cv::Rect(
-            roi_vect_[img_idx].x, roi_vect_[img_idx].y,
-            blend_width, roi_vect_[img_idx].height));
+    // Create ROI in destination with bounds checking
+    cv::Rect dst_roi(cols, 0, 
+                     std::min(safe_roi.width, image_concat_umat.cols - cols),
+                     std::min(safe_roi.height, image_concat_umat.rows));
+
+    // Additional safety checks
+    if (dst_roi.width <= 0 || dst_roi.height <= 0 || 
+        dst_roi.x < 0 || dst_roi.y < 0 ||
+        dst_roi.x + dst_roi.width > image_concat_umat.cols ||
+        dst_roi.y + dst_roi.height > image_concat_umat.rows) {
+        std::cout << "Warning: Invalid destination ROI for image " << img_idx << std::endl;
+        return;
+    }
+
+    // Debug output
+    std::cout << "Image " << img_idx << " dimensions:" << std::endl;
+    std::cout << "Source size: " << tmp_umat_vect_[img_idx].size() << std::endl;
+    std::cout << "Safe ROI: " << safe_roi << std::endl;
+    std::cout << "Dst ROI: " << dst_roi << std::endl;
+    std::cout << "Concat image size: " << image_concat_umat.size() << std::endl;
+
+    try {
+        // Create valid UMat ROIs
+        cv::UMat src_roi = tmp_umat_vect_[img_idx](safe_roi);
+        cv::UMat dst_roi_mat = image_concat_umat(dst_roi);
+
+        // Just copy for first image or when no blending needed
+        if (img_idx == 0 || weightMap_.empty()) {
+            src_roi.copyTo(dst_roi_mat);
+        } else {
+            // Blend with previous image
+            int blend_width = std::min(weightMap_[0].cols, dst_roi.width);
             
-        cv::UMat prev_blend = tmp_umat_vect_[img_idx-1](cv::Rect(
-            roi_vect_[img_idx-1].width - blend_width, roi_vect_[img_idx-1].y,
-            blend_width, roi_vect_[img_idx-1].height));
+            // Get overlapping regions
+            cv::UMat curr_blend = src_roi(cv::Rect(0, 0, blend_width, dst_roi.height));
+            cv::UMat prev_blend = dst_roi_mat(cv::Rect(0, 0, blend_width, dst_roi.height));
 
-        // Apply weight maps
-        cv::multiply(curr_blend, weightMap_[0], curr_blend, 1.0/255);
-        cv::multiply(prev_blend, weightMap_[1], prev_blend, 1.0/255);
-        
-        // Combine
-        cv::add(curr_blend, prev_blend, curr_blend);
-        
-        // Copy blended region
-        curr_blend.copyTo(roi(cv::Rect(0, 0, blend_width, roi.rows)));
-        
-        // Copy remaining region
-        tmp_umat_vect_[img_idx](cv::Rect(
-            roi_vect_[img_idx].x + blend_width, roi_vect_[img_idx].y,
-            roi_vect_[img_idx].width - blend_width, roi_vect_[img_idx].height
-        )).copyTo(roi(cv::Rect(
-            blend_width, 0,
-            roi.cols - blend_width, roi.rows
-        )));
-    } else {
-        // Just copy for first image
-        tmp_umat_vect_[img_idx](roi_vect_[img_idx]).copyTo(roi);
+            // Apply weight maps
+            cv::multiply(curr_blend, weightMap_[0](cv::Rect(0, 0, blend_width, dst_roi.height)), 
+                        curr_blend, 1.0/255);
+            cv::multiply(prev_blend, weightMap_[1](cv::Rect(0, 0, blend_width, dst_roi.height)), 
+                        prev_blend, 1.0/255);
+            
+            // Combine
+            cv::add(curr_blend, prev_blend, curr_blend);
+            curr_blend.copyTo(dst_roi_mat(cv::Rect(0, 0, blend_width, dst_roi.height)));
+
+            // Copy remaining region
+            if (blend_width < dst_roi.width) {
+                src_roi(cv::Rect(blend_width, 0, dst_roi.width - blend_width, dst_roi.height))
+                    .copyTo(dst_roi_mat(cv::Rect(blend_width, 0, dst_roi.width - blend_width, dst_roi.height)));
+            }
+        }
+    } catch (const cv::Exception& e) {
+        std::cout << "OpenCV error: " << e.what() << std::endl;
     }
 }

@@ -29,8 +29,7 @@ StitchingParamGenerator::StitchingParamGenerator(
     image_warped_size_vector_ = std::vector<cv::Size>(num_img_);
     reproj_xmap_vector_ = std::vector<cv::UMat>(num_img_);
     reproj_ymap_vector_ = std::vector<cv::UMat>(num_img_);
-    camera_params_vector_ =
-        std::vector<cv::detail::CameraParams>(camera_params_vector_);
+    camera_params_vector_ = std::vector<cv::detail::CameraParams>(num_img_);
 
     projected_image_roi_refined_vect_ = std::vector<cv::Rect>(num_img_);
 
@@ -80,12 +79,8 @@ void StitchingParamGenerator::InitCameraParam() {
     (*matcher)(features, pairwise_matches);
     matcher->collectGarbage();
 
-    // Check if we should save matches graph
-    if (save_graph) {
-        LOGLN("Saving matches graph...");
-        ofstream f(save_graph_to.c_str());
-        f << matchesGraphAsString(img_names, pairwise_matches, conf_thresh);
-    }
+    LOGLN("Pairwise matching done");
+
     Ptr<Estimator> estimator;
     if (estimator_type == "affine")
         estimator = makePtr<AffineBasedEstimator>();
@@ -95,11 +90,15 @@ void StitchingParamGenerator::InitCameraParam() {
         std::cout << "Homography estimation failed.\n";
         assert(false);
     }
+    LOGLN("Homography estimation done");
+
     for (auto& i : camera_params_vector_) {
         Mat R;
         i.R.convertTo(R, CV_32F);
         i.R = R;
     }
+
+    LOGLN("Bundle adjustment");
     Ptr<detail::BundleAdjusterBase> adjuster;
     if (ba_cost_func == "reproj")
         adjuster = makePtr<detail::BundleAdjusterReproj>();
@@ -242,58 +241,37 @@ void StitchingParamGenerator::InitWarper() {
     blender_->prepare(image_point_vect, image_size_vector_);
 
     std::vector<cv::Rect> projected_image_roi_vect = std::vector<cv::Rect>(num_img_);
+    cv::Point min_point(std::numeric_limits<int>::max(), std::numeric_limits<int>::max());
+    cv::Point max_point(std::numeric_limits<int>::min(), std::numeric_limits<int>::min());
 
-    Point roi_tl_bias(999999, 999999);
-    Point roi_br_bias(-999999, -999999);
-    
     // First pass: find the total bounds
     for (int i = 0; i < num_img_; ++i) {
         Size sz = image_vector_[i].size();
         Mat K;
         camera_params_vector_[i].K().convertTo(K, CV_32F);
-        Rect roi = rotation_warper_->warpRoi(sz, K, camera_params_vector_[i].R);
+        projected_image_roi_vect[i] = rotation_warper_->warpRoi(sz, K, camera_params_vector_[i].R);
         
-        roi_tl_bias.x = min(roi.tl().x, roi_tl_bias.x);
-        roi_tl_bias.y = min(roi.tl().y, roi_tl_bias.y);
-        roi_br_bias.x = max(roi.br().x, roi_br_bias.x);
-        roi_br_bias.y = max(roi.br().y, roi_br_bias.y);
-    }
-
-    // Calculate the full rectangular bounds
-    Size full_size(roi_br_bias.x - roi_tl_bias.x, 
-                  roi_br_bias.y - roi_tl_bias.y);
-
-    // Second pass: adjust ROIs to fit within the rectangle
-    for (int i = 0; i < num_img_; ++i) {
-        Rect& roi = projected_image_roi_vect[i];
-        roi.x -= roi_tl_bias.x;
-        roi.y -= roi_tl_bias.y;
+        // Update global bounds
+        min_point.x = std::min(min_point.x, projected_image_roi_vect[i].x);
+        min_point.y = std::min(min_point.y, projected_image_roi_vect[i].y);
+        max_point.x = std::max(max_point.x, projected_image_roi_vect[i].x + projected_image_roi_vect[i].width);
+        max_point.y = std::max(max_point.y, projected_image_roi_vect[i].y + projected_image_roi_vect[i].height);
         
-        // Ensure ROI doesn't exceed bounds
-        roi.width = min(roi.width, full_size.width - roi.x);
-        roi.height = min(roi.height, full_size.height - roi.y);
+        std::cout << "Initial ROI " << i << ": " << projected_image_roi_vect[i] << std::endl;
     }
 
-    // Adjust the refined ROIs for blending
-    int total_width = 0;
+    // Adjust ROIs to have positive coordinates
     for (int i = 0; i < num_img_; ++i) {
-        Rect& roi = projected_image_roi_refined_vect_[i];
-        if (i > 0) {
-            // Calculate overlap with previous image
-            int overlap = projected_image_roi_refined_vect_[i-1].br().x - roi.tl().x;
-            if (overlap > 0) {
-                roi.x += overlap/2;
-                roi.width -= overlap/2;
-                projected_image_roi_refined_vect_[i-1].width -= overlap/2;
-            }
-        }
-        total_width += roi.width;
+        projected_image_roi_vect[i].x -= min_point.x;
+        projected_image_roi_vect[i].y -= min_point.y;
     }
 
-    // Ensure all ROIs have same height
-    int common_height = full_size.height;
-    for (auto& roi : projected_image_roi_refined_vect_) {
-        roi.height = common_height;
+    // Initialize refined ROIs
+    projected_image_roi_refined_vect_ = projected_image_roi_vect;
+
+    // Log the adjusted ROIs
+    for (size_t i = 0; i < num_img_; ++i) {
+        std::cout << "Adjusted ROI " << i << ": " << projected_image_roi_refined_vect_[i] << std::endl;
     }
 }
 

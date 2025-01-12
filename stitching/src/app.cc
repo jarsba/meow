@@ -35,6 +35,23 @@ App::App(const std::vector<std::string>& video_files, const std::string& output_
         image_roi_vect
     );
 
+    // Calculate total width and maximum height
+    total_cols_ = 0;
+    int max_height = 0;
+    for (const auto& roi : image_roi_vect) {
+        total_cols_ += roi.width;
+        max_height = std::max(max_height, roi.height);
+    }
+
+    // Add some padding to ensure we have enough space
+    total_cols_ += 100;  // Add padding for blending
+    max_height += 20;    // Add some vertical padding
+
+    // Create image_concat_umat_ with correct dimensions
+    std::cout << "Creating concat image with size: " << max_height << "x" << total_cols_ << std::endl;
+    image_concat_umat_.create(max_height, total_cols_, CV_8UC3);
+    image_concat_umat_.setTo(cv::Scalar(0, 0, 0));
+
     image_stitcher_.SetParams(
         100,
         undist_xmap_vector,
@@ -44,24 +61,10 @@ App::App(const std::vector<std::string>& video_files, const std::string& output_
         image_roi_vect
     );
 
-    total_cols_ = 0;
-    for (size_t i = 0; i < sensor_data_interface_.num_img_; ++i) {
-        total_cols_ += image_roi_vect[i].width;
-    }
-
-    // Initialize the video writer
-    std::string output_file = output_folder_ + "/" + file_name_;
-    int frame_width = total_cols_;
-    int frame_height = image_roi_vect[0].height;
-    video_writer_.open(output_file, cv::VideoWriter::fourcc('M', 'J', 'P', 'G'), fps_, cv::Size(frame_width, frame_height));
-    if (!video_writer_.isOpened()) {
-        throw std::runtime_error("Could not open the output video file for write: " + output_file);
-    }
-
-    image_concat_umat_.create(frame_height, frame_width, CV_8UC3);
+    // Don't initialize video writer here - we'll do it after finding the crop rectangle in run_stitching()
 }
 
-// Add this helper function to find the largest interior rectangle
+// Helper function to find the largest interior rectangle
 cv::Rect findLargestInteriorRectangle(const cv::Mat& image) {
     cv::Mat gray, binary;
     cv::cvtColor(image, gray, cv::COLOR_BGR2GRAY);
@@ -105,9 +108,11 @@ void App::run_stitching() {
     std::vector<cv::UMat> image_vector(sensor_data_interface_.num_img_);
     std::vector<cv::UMat> images_warped_vector(sensor_data_interface_.num_img_);
     size_t frame_count = 0;
-    double total_frames = dry_run_ ? 1 : sensor_data_interface_.getTotalFrames();
     cv::Rect crop_rect;
     bool crop_rect_initialized = false;
+    
+    // Get total frames for progress calculation
+    double total_frames = dry_run_ ? 1 : sensor_data_interface_.getTotalFrames();
 
     while (true) {
         sensor_data_interface_.get_image_vector(image_vector);
@@ -134,28 +139,39 @@ void App::run_stitching() {
             crop_rect = findLargestInteriorRectangle(image_concat_mat);
             crop_rect_initialized = true;
 
-            // Reinitialize video writer with new dimensions
-            if (video_writer_.isOpened()) {
-                video_writer_.release();
+            // Initialize video writer with cropped dimensions if not in dry run mode
+            if (!dry_run_) {
+                std::string output_file = output_folder_ + "/" + file_name_;
+                video_writer_.open(output_file, 
+                                cv::VideoWriter::fourcc('H', '2', '6', '4'),  // Use H264 codec
+                                fps_, 
+                                cv::Size(crop_rect.width, crop_rect.height));
+                if (!video_writer_.isOpened()) {
+                    throw std::runtime_error("Could not open the output video file for write: " + output_file);
+                }
             }
-            std::string output_file = output_folder_ + "/" + file_name_;
-            video_writer_.open(output_file, 
-                             cv::VideoWriter::fourcc('M', 'J', 'P', 'G'), 
-                             fps_, 
-                             cv::Size(crop_rect.width, crop_rect.height));
         }
 
         // Crop the frame
         cv::Mat cropped_frame = image_concat_mat(crop_rect);
-        video_writer_.write(cropped_frame);
 
         if (dry_run_) {
-            // Save single frame as image
-            cv::Mat output_frame;
-            image_concat_mat.copyTo(output_frame);
+            // Save single cropped frame as image
             std::string image_path = output_folder_ + "/test_frame.jpg";
-            cv::imwrite(image_path, output_frame, {cv::IMWRITE_JPEG_QUALITY, 95});
+            std::cout << "Saving test frame to: " << image_path << std::endl;
+            std::cout << "Original size: " << image_concat_mat.size() << std::endl;
+            std::cout << "Cropped size: " << cropped_frame.size() << std::endl;
+            
+            if (cropped_frame.empty()) {
+                throw std::runtime_error("Cropped image is empty");
+            }
+            
+            if (!cv::imwrite(image_path, cropped_frame)) {
+                throw std::runtime_error("Failed to save test frame");
+            }
             break;
+        } else {
+            video_writer_.write(cropped_frame);
         }
 
         frame_count++;
@@ -163,11 +179,10 @@ void App::run_stitching() {
             auto current_time = std::chrono::high_resolution_clock::now();
             std::chrono::duration<double> elapsed_seconds = current_time - start_time;
             double fps = frame_count / elapsed_seconds.count();
-            double progress_percentage = (frame_count / total_frames) * 100;
+            double progress_percentage = (frame_count / static_cast<double>(total_frames)) * 100.0;
             double estimated_total_time = total_frames / fps;
             double time_remaining = estimated_total_time - elapsed_seconds.count();
 
-            
             std::cout << "PROGRESS:" << static_cast<int>(progress_percentage) << std::endl;
             std::cout << "FPS: " << fps << ", Progress: " << progress_percentage << "%"
                       << ", Time Remaining: " << time_remaining << " seconds" << std::endl;
