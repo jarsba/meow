@@ -88,15 +88,13 @@ function TaskStatusView() {
 
                                 <div className="w-full">
                                     <Progress.Root
-                                        className="relative overflow-hidden rounded-full w-full h-[25px] bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700"
+                                        className="relative overflow-hidden rounded-full w-full h-[25px] bg-gray-200"
+                                        style={{ transform: 'translateZ(0)', }}
                                         value={totalProgress}
-                                        max={100}
                                     >
                                         <Progress.Indicator
-                                            className="bg-accent-9 h-full transition-transform duration-[660ms] ease-[cubic-bezier(0.65, 0, 0.35, 1)]"
-                                            style={{
-                                                transform: `translateX(-${100 - (totalProgress || 0)}%)`
-                                            }}
+                                            className="bg-green-500 w-full h-full transition-transform duration-[660ms] ease-[cubic-bezier(0.65, 0, 0.35, 1)]"
+                                            style={{ transform: `translateX(-${100 - totalProgress}%)` }}
                                         />
                                     </Progress.Root>
                                     <Text className="mt-2">

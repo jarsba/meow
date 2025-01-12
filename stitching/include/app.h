@@ -10,7 +10,8 @@
 
 class App {
 public:
-    App(const std::vector<std::string>& video_files, const std::string& output_folder, const std::string& file_name, double fps);
+    App(const std::vector<std::string>& video_files, const std::string& output_folder, 
+        const std::string& file_name, double fps, bool dry_run = false);
     void run_stitching();
 
 private:
@@ -22,6 +23,7 @@ private:
     std::string file_name_;
     double fps_;
     int total_cols_;
+    bool dry_run_;
 };
 
 #endif // APP_H

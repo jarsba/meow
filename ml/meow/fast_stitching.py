@@ -22,7 +22,8 @@ def call_image_stitching(
         fps: int,
         left_file_path: str,
         right_file_path: str,
-        progress_callback: Optional[Callable[[int], None]] = None
+        dry_run: bool = False,
+        progress_callback: Optional[Callable[[str, TaskStatus, int], None]] = None
 ) -> Optional[str]:
     logger.info("Starting fast image stitching")
 
@@ -31,6 +32,7 @@ def call_image_stitching(
         output_dir,
         output_filename,
         str(fps),
+        str(dry_run).lower(),
         left_file_path,
         right_file_path
     ]

@@ -6,8 +6,8 @@
 #include "stitching_param_generator.h"
 #include <opencv2/imgproc.hpp>
 
-App::App(const std::vector<std::string>& video_files, const std::string& output_folder, const std::string& file_name, double fps)
-    : sensor_data_interface_(video_files), output_folder_(output_folder), file_name_(file_name), fps_(fps) {
+App::App(const std::vector<std::string>& video_files, const std::string& output_folder, const std::string& file_name, double fps, bool dry_run)
+    : sensor_data_interface_(video_files), output_folder_(output_folder), file_name_(file_name), fps_(fps), dry_run_(dry_run)  {
 
     sensor_data_interface_.InitVideoCapture();
 
@@ -105,14 +105,14 @@ void App::run_stitching() {
     std::vector<cv::UMat> image_vector(sensor_data_interface_.num_img_);
     std::vector<cv::UMat> images_warped_vector(sensor_data_interface_.num_img_);
     size_t frame_count = 0;
-    double total_frames = sensor_data_interface_.getTotalFrames();
+    double total_frames = dry_run_ ? 1 : sensor_data_interface_.getTotalFrames();
     cv::Rect crop_rect;
     bool crop_rect_initialized = false;
 
     while (true) {
         sensor_data_interface_.get_image_vector(image_vector);
 
-        if (sensor_data_interface_.all_videos_finished()) {
+        if (sensor_data_interface_.all_videos_finished() || (dry_run_ && frame_count > 0)) {
             break;
         }
 
@@ -149,6 +149,15 @@ void App::run_stitching() {
         cv::Mat cropped_frame = image_concat_mat(crop_rect);
         video_writer_.write(cropped_frame);
 
+        if (dry_run_) {
+            // Save single frame as image
+            cv::Mat output_frame;
+            image_concat_mat.copyTo(output_frame);
+            std::string image_path = output_folder_ + "/test_frame.jpg";
+            cv::imwrite(image_path, output_frame, {cv::IMWRITE_JPEG_QUALITY, 95});
+            break;
+        }
+
         frame_count++;
         if (frame_count % static_cast<size_t>(fps_ * 5) == 0) {
             auto current_time = std::chrono::high_resolution_clock::now();
@@ -171,26 +180,30 @@ void App::run_stitching() {
 }
 
 int main(int argc, char* argv[]) {
-  if (argc < 6) {
-    std::cerr << "Usage: " << argv[0] << " <output_folder> <file_name> <fps> <video_file1> <video_file2> [video_file3 ...]" << std::endl;
-    return 1;
-  }
+    if (argc < 6) {
+        std::cerr << "Usage: " << argv[0] 
+                  << " <output_folder> <file_name> <fps> <dry_run> <video_file1> <video_file2> [video_file3 ...]" 
+                  << std::endl;
+        return 1;
+    }
 
-  std::string output_folder = argv[1];
-  std::string file_name = argv[2];
-  double fps = std::stod(argv[3]);
-  std::vector<std::string> video_files;
-  for (int i = 4; i < argc; ++i) {
-    video_files.push_back(argv[i]);
-  }
+    std::string output_folder = argv[1];
+    std::string file_name = argv[2];
+    double fps = std::stod(argv[3]);
+    bool dry_run = std::string(argv[4]) == "true";
+    
+    std::vector<std::string> video_files;
+    for (int i = 5; i < argc; ++i) {
+        video_files.push_back(argv[i]);
+    }
 
-  try {
-    App app(video_files, output_folder, file_name, fps);
-    app.run_stitching();
-  } catch (const std::exception& e) {
-    std::cerr << "Exception: " << e.what() << std::endl;
-    return 1;
-  }
+    try {
+        App app(video_files, output_folder, file_name, fps, dry_run);
+        app.run_stitching();
+    } catch (const std::exception& e) {
+        std::cerr << "Exception: " << e.what() << std::endl;
+        return 1;
+    }
 
-  return 0;
+    return 0;
 }

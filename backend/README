@@ -10,7 +10,16 @@
 
 ## How to run
 
-uvicorn main:app --reload --port 8888
+Add meow to PYTHOPATH
 
+```
+export PYTHONPATH=$PYTHONPATH:<path-to>/meow
+```
+
+Run FastAPI
+
+```
+python3 main.py
+```
 
 
