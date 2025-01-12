@@ -23,6 +23,7 @@ def call_image_stitching(
         left_file_path: str,
         right_file_path: str,
         dry_run: bool = False,
+        use_lir: bool = True,
         progress_callback: Optional[Callable[[str, TaskStatus, int], None]] = None
 ) -> Optional[str]:
     logger.info("Starting fast image stitching")
@@ -33,6 +34,7 @@ def call_image_stitching(
         output_filename,
         str(fps),
         str(dry_run).lower(),
+        str(use_lir).lower(),
         left_file_path,
         right_file_path
     ]
@@ -87,6 +89,9 @@ if __name__ == "__main__":
     parser.add_argument("-l", "--left-video", required=True, dest='left_video', help="path to the left video file")
     parser.add_argument("-r", "--right-video", required=True, dest='right_video',
                         help="path to the right video file")
+    parser.add_argument("-d", "--dry-run", action='store_true', dest='dry_run', help="dry run")
+    parser.add_argument("--no-lir", action='store_false', dest='use_lir',
+                        help="disable Largest Interior Rectangle cropping")
     parser.add_argument("-v", "--verbose", action='store_true', dest='verbose', help="verbose output")
 
     args = parser.parse_args()
@@ -96,7 +101,13 @@ if __name__ == "__main__":
 
     args_dict = vars(args)
 
-    video_path = call_image_stitching(output_dir=args_dict["output_directory"], output_filename=args_dict["file_name"],
-                                      fps=args_dict["fps"], left_file_path=args_dict["left_video"],
-                                      right_file_path=args_dict["right_video"])
+    video_path = call_image_stitching(
+        output_dir=args_dict["output_directory"], 
+        output_filename=args_dict["file_name"],
+        fps=args_dict["fps"], 
+        left_file_path=args_dict["left_video"],
+        right_file_path=args_dict["right_video"], 
+        dry_run=args_dict["dry_run"],
+        use_lir=args_dict["use_lir"]
+    )
     logger.info(f"Video ready, path: {video_path}")

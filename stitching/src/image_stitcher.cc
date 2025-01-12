@@ -23,6 +23,13 @@ void ImageStitcher::SetParams(
     final_xmap_vector_ = std::vector<cv::UMat>(undist_ymap_vector.size());
     final_ymap_vector_ = std::vector<cv::UMat>(undist_ymap_vector.size());
     tmp_umat_vect_ = std::vector<cv::UMat>(undist_ymap_vector.size());
+
+    // Initialize all maps with black borders
+    for (size_t img_idx = 0; img_idx < num_img_; ++img_idx) {
+        tmp_umat_vect_[img_idx].create(undist_ymap_vector[0].size(), CV_8UC3);
+        tmp_umat_vect_[img_idx].setTo(cv::Scalar(0, 0, 0));  // Set to black
+    }
+
     for (size_t img_idx = 0; img_idx < num_img_; ++img_idx) {
         remap(undist_xmap_vector_[img_idx],
               final_xmap_vector_[img_idx],
@@ -77,94 +84,86 @@ void ImageStitcher::CreateWeightMap(const int& height, const int& width) {
     std::cout << "[CreateWeightMap] Creating weight map... Done." << std::endl;
 }
 
+// Helper function to check if a pixel is similar to reference color
+bool isSimilarColor(const cv::Vec3b& pixel, const cv::Vec3b& reference) {
+    return std::abs(pixel[0] - reference[0]) <= 0 &&
+           std::abs(pixel[1] - reference[1]) <= 0 &&
+           std::abs(pixel[2] - reference[2]) <= 0;
+}
+
+
 void ImageStitcher::WarpImages(
     const int& img_idx,
     const int& fusion_pixel,
     const std::vector<cv::UMat>& image_vector,
-    std::vector<cv::UMat>& images_warped_vector,
+    std::vector<cv::UMat>& images_warped_with_roi_vector,
     cv::UMat& image_concat_umat) {
 
-    // Initialize with black background
+    // Initialize or clear the concat image with black
     if (img_idx == 0) {
         image_concat_umat.setTo(cv::Scalar(0, 0, 0));
     }
 
-    // Remap with black border
+    // First do the remap with black borders
     remap(image_vector[img_idx],
           tmp_umat_vect_[img_idx],
           final_xmap_vector_[img_idx],
           final_ymap_vector_[img_idx],
           cv::INTER_LINEAR,
-          cv::BORDER_CONSTANT,
-          cv::Scalar(0, 0, 0));
+          cv::BORDER_CONSTANT,  // Use constant border
+          cv::Scalar(0, 0, 0)   // Black color for borders
+    );
 
-    // Calculate destination position
+    // Now get the warped image and its corner colors
+    cv::Mat warped_mat;
+    tmp_umat_vect_[img_idx].copyTo(warped_mat);
+    
+    cv::Vec3b topLeft = warped_mat.at<cv::Vec3b>(0, 0);
+    cv::Vec3b topRight = warped_mat.at<cv::Vec3b>(0, warped_mat.cols-1);
+    cv::Vec3b bottomLeft = warped_mat.at<cv::Vec3b>(warped_mat.rows-1, 0);
+    cv::Vec3b bottomRight = warped_mat.at<cv::Vec3b>(warped_mat.rows-1, warped_mat.cols-1);
+
+    // Convert any remaining border colors to black
+    cv::parallel_for_(cv::Range(0, warped_mat.rows), [&](const cv::Range& range) {
+        for(int y = range.start; y < range.end; y++) {
+            for(int x = 0; x < warped_mat.cols; x++) {
+                cv::Vec3b& pixel = warped_mat.at<cv::Vec3b>(y, x);
+                if (isSimilarColor(pixel, topLeft) || 
+                    isSimilarColor(pixel, topRight) || 
+                    isSimilarColor(pixel, bottomLeft) || 
+                    isSimilarColor(pixel, bottomRight)) {
+                    pixel = cv::Vec3b(0, 0, 0);
+                }
+            }
+        }
+    });
+    
+    warped_mat.copyTo(tmp_umat_vect_[img_idx]);
+
+    if (img_idx > 0) {
+        cv::UMat _r = tmp_umat_vect_[img_idx](cv::Rect(
+            roi_vect_[img_idx].x,
+            roi_vect_[img_idx].y,
+            weightMap_[0].cols,
+            weightMap_[0].rows));
+
+        cv::UMat _l = tmp_umat_vect_[img_idx - 1](cv::Rect(
+            roi_vect_[img_idx - 1].x + roi_vect_[img_idx - 1].width,
+            roi_vect_[img_idx - 1].y,
+            weightMap_[0].cols,
+            weightMap_[0].rows));
+        cv::multiply(_r, weightMap_[0], _r, 1. / 255.);
+        cv::multiply(_l, weightMap_[1], _l, 1. / 255.);
+        cv::add(_r, _l, _r);
+    }
+
+    // Apply ROI
     int cols = 0;
     for (size_t i = 0; i < img_idx; i++) {
         cols += roi_vect_[i].width;
     }
 
-    // Ensure ROI is valid
-    cv::Rect safe_roi = roi_vect_[img_idx];
-    safe_roi.x = std::max(0, safe_roi.x);
-    safe_roi.y = std::max(0, safe_roi.y);
-    safe_roi.width = std::min(safe_roi.width, tmp_umat_vect_[img_idx].cols - safe_roi.x);
-    safe_roi.height = std::min(safe_roi.height, tmp_umat_vect_[img_idx].rows - safe_roi.y);
-
-    // Create ROI in destination with bounds checking
-    cv::Rect dst_roi(cols, 0, 
-                     std::min(safe_roi.width, image_concat_umat.cols - cols),
-                     std::min(safe_roi.height, image_concat_umat.rows));
-
-    // Additional safety checks
-    if (dst_roi.width <= 0 || dst_roi.height <= 0 || 
-        dst_roi.x < 0 || dst_roi.y < 0 ||
-        dst_roi.x + dst_roi.width > image_concat_umat.cols ||
-        dst_roi.y + dst_roi.height > image_concat_umat.rows) {
-        std::cout << "Warning: Invalid destination ROI for image " << img_idx << std::endl;
-        return;
-    }
-
-    // Debug output
-    std::cout << "Image " << img_idx << " dimensions:" << std::endl;
-    std::cout << "Source size: " << tmp_umat_vect_[img_idx].size() << std::endl;
-    std::cout << "Safe ROI: " << safe_roi << std::endl;
-    std::cout << "Dst ROI: " << dst_roi << std::endl;
-    std::cout << "Concat image size: " << image_concat_umat.size() << std::endl;
-
-    try {
-        // Create valid UMat ROIs
-        cv::UMat src_roi = tmp_umat_vect_[img_idx](safe_roi);
-        cv::UMat dst_roi_mat = image_concat_umat(dst_roi);
-
-        // Just copy for first image or when no blending needed
-        if (img_idx == 0 || weightMap_.empty()) {
-            src_roi.copyTo(dst_roi_mat);
-        } else {
-            // Blend with previous image
-            int blend_width = std::min(weightMap_[0].cols, dst_roi.width);
-            
-            // Get overlapping regions
-            cv::UMat curr_blend = src_roi(cv::Rect(0, 0, blend_width, dst_roi.height));
-            cv::UMat prev_blend = dst_roi_mat(cv::Rect(0, 0, blend_width, dst_roi.height));
-
-            // Apply weight maps
-            cv::multiply(curr_blend, weightMap_[0](cv::Rect(0, 0, blend_width, dst_roi.height)), 
-                        curr_blend, 1.0/255);
-            cv::multiply(prev_blend, weightMap_[1](cv::Rect(0, 0, blend_width, dst_roi.height)), 
-                        prev_blend, 1.0/255);
-            
-            // Combine
-            cv::add(curr_blend, prev_blend, curr_blend);
-            curr_blend.copyTo(dst_roi_mat(cv::Rect(0, 0, blend_width, dst_roi.height)));
-
-            // Copy remaining region
-            if (blend_width < dst_roi.width) {
-                src_roi(cv::Rect(blend_width, 0, dst_roi.width - blend_width, dst_roi.height))
-                    .copyTo(dst_roi_mat(cv::Rect(blend_width, 0, dst_roi.width - blend_width, dst_roi.height)));
-            }
-        }
-    } catch (const cv::Exception& e) {
-        std::cout << "OpenCV error: " << e.what() << std::endl;
-    }
+    tmp_umat_vect_[img_idx](roi_vect_[img_idx]).copyTo(
+        image_concat_umat(cv::Rect(cols, 0, roi_vect_[img_idx].width, roi_vect_[img_idx].height))
+    );
 }
