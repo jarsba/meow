@@ -133,6 +133,45 @@ or on local machine:
 python3 -m ml.meow 
 ```
 
+Available arguments:
+
+| Category | Argument | Description | Default |
+|----------|----------|-------------|---------|
+| **Basic Arguments** |
+| | `-l, --left-videos` | Path to the directory containing left camera videos | Required |
+| | `-r, --right-videos` | Path to the directory containing right camera videos | Required |
+| | `-o, --output` | Path of the video output file | `meow_output.mp4` |
+| **Processing Options** |
+| | `-m, --mixer` | Use video mixer mode (cannot be used with --panorama) | `False` |
+| | `-p, --panorama` | Use panorama stitching mode (cannot be used with --mixer) | `False` |
+| | `-mt, --mixer-type` | Type of mixer to use: "farneback" or "abs_diff" | `farneback` |
+| **Video Timing** |
+| | `-st, --start-time` | Start time of the game as HH:MM:SS | None |
+| | `-et, --end-time` | End time of the game as HH:MM:SS | None |
+| **Output Options** |
+| | `-t, --file-type` | File type for videos without dot | `mp4` |
+| | `-YT, --upload-YT` | Automatically upload to Youtube | `False` |
+| | `--use-logo` | Burn logo on video | `False` |
+| **Development** |
+| | `-s, --save` | Save intermediate files | `False` |
+| | `-od, --output-directory` | Path for the output directory | System temp |
+| | `--make-sample` | Make 2-minute sample video for testing | `False` |
+| | `-v, --verbose` | Verbose output for debugging | `False` |
+
+Example usage:
+```bash
+# Basic panorama stitching
+python3 -m ml.meow -l ./left_videos -r ./right_videos -p -o game.mp4
+
+# Video mixing with timing
+python3 -m ml.meow -l ./left_videos -r ./right_videos -m -st 00:05:00 -et 01:35:00
+
+# Create sample panorama with logo
+python3 -m ml.meow -l ./left_videos -r ./right_videos -p --make-sample --use-logo
+
+# Full game with YouTube upload
+python3 -m ml.meow -l ./left_videos -r ./right_videos -m -YT -o "Game Highlights.mp4"
+```
 
 
 ### Flowchart of the application
