@@ -29,39 +29,47 @@ class AbsoluteDifferenceOpticalFlowMixer(VideoMixerBase):
     def mix_video(self, video_capture_left: cv2.VideoCapture, video_capture_right: cv2.VideoCapture,
                   video_output_path: str, flow_fps=5, history_length=24, output_fps: int = 60,
                   output_height: int = 1080, output_width: int = 1920,
-                  fourcc: cv2.VideoWriter_fourcc = cv2.VideoWriter_fourcc('M', 'J', 'P', 'G')) -> cv2.VideoWriter:
+                  fourcc: cv2.VideoWriter_fourcc = cv2.VideoWriter_fourcc('M', 'J', 'P', 'G'),
+                  progress_callback=None) -> cv2.VideoWriter:
+
+        input_fps = int(video_capture_left.get(cv2.CAP_PROP_FPS))
+        if output_fps > input_fps:
+            raise ValueError("Output fps cannot be higher than input fps")
+
         left_n_frames = int(video_capture_left.get(cv2.CAP_PROP_FRAME_COUNT)) - 1
         right_n_frames = int(video_capture_right.get(cv2.CAP_PROP_FRAME_COUNT)) - 1
         total_frames = min(left_n_frames, right_n_frames)
 
         video_output = cv2.VideoWriter(video_output_path, fourcc, output_fps, (output_width, output_height))
 
-        prev_left = None
-        prev_right = None
+        # Initialize first frames
+        _, first_left = video_capture_left.read()
+        _, first_right = video_capture_right.read()
+        
+        if first_left is None or first_right is None:
+            raise ValueError("Could not read first frames from videos")
 
-        # Denote 0 for left frame, 1 for right frame. Always write the frame that has more "wins" in the last 10 frames
-        optical_flow_history = []
+        prev_left = prepare_frame(first_left)
+        prev_right = prepare_frame(first_right)
+        
+        # Write first frame
+        video_output.write(first_left)
+        
+        optical_flow_history = [0]  # Start with left camera
+        frames_per_flow = max(1, round(input_fps / flow_fps))  # How many frames between flow calculations
+        
+        logger.debug(f"Processing {total_frames} frames with flow calculation every {frames_per_flow} frames")
 
-        for i in tqdm(range(total_frames)):
-
+        # Process remaining frames
+        for i in tqdm(range(1, total_frames)):
             res_left, frame_left = video_capture_left.read()
             res_right, frame_right = video_capture_right.read()
 
             if res_left is False or res_right is False:
                 break
 
-            if i == 0:
-                masked_left = prepare_frame(frame_left)
-                masked_right = prepare_frame(frame_right)
-
-                prev_left = masked_left
-                prev_right = masked_right
-                continue
-
-            if i < flow_fps:
-                video_output.write(frame_left)
-            elif i % flow_fps == 0:
-
+            # Calculate optical flow on regular intervals
+            if i % frames_per_flow == 0:
                 masked_left = prepare_frame(frame_left)
                 masked_right = prepare_frame(frame_right)
 
@@ -71,26 +79,26 @@ class AbsoluteDifferenceOpticalFlowMixer(VideoMixerBase):
                 left_movement = np.sum(thresh_l)
                 right_movement = np.sum(thresh_r)
 
-                if left_movement >= right_movement:
-                    optical_flow_history.append(0)
-                else:
-                    optical_flow_history.append(1)
+                # Update history
+                optical_flow_history.append(0 if left_movement >= right_movement else 1)
+                if len(optical_flow_history) > history_length:
+                    optical_flow_history = optical_flow_history[-history_length:]
 
-                last_history = optical_flow_history[-history_length:]
-                if np.mean(last_history) < 0.5:
-                    video_output.write(frame_left)
-                else:
-                    video_output.write(frame_right)
+                # Update previous frames for next flow calculation
+                prev_left = masked_left
+                prev_right = masked_right
 
-            else:
-                last_history = optical_flow_history[-history_length:]
-                if np.mean(last_history) < 0.5:
-                    video_output.write(frame_left)
-                else:
-                    video_output.write(frame_right)
+            # Write frame based on recent history
+            use_left = np.mean(optical_flow_history) < 0.5
+            video_output.write(frame_left if use_left else frame_right)
 
-            prev_left = masked_left
-            prev_right = masked_right
+            # Handle frame rate conversion if needed
+            if output_fps < input_fps and i % (input_fps // output_fps) != 0:
+                continue
+
+            if progress_callback:
+                progress = int((i / total_frames) * 100)
+                progress_callback(progress)
 
         video_capture_left.release()
         video_capture_right.release()
@@ -102,8 +110,8 @@ class AbsoluteDifferenceOpticalFlowMixer(VideoMixerBase):
                                   video_capture_right: cv2.VideoCapture, video_output_path: str, flow_fps=5,
                                   history_length=24, input_fps: int = 30, output_fps: int = 30,
                                   output_height: int = 1080, output_width: int = 1920,
-                                  fourcc: cv2.VideoWriter_fourcc = cv2.VideoWriter_fourcc('M', 'J', 'P',
-                                                                                          'G')) -> cv2.VideoWriter:
+                                  fourcc: cv2.VideoWriter_fourcc = cv2.VideoWriter_fourcc('M', 'J', 'P','G'),
+                                  progress_callback=None) -> cv2.VideoWriter:
 
         if output_fps > input_fps:
             raise ValueError("Output fps cannot be higher than input fps")
@@ -114,44 +122,36 @@ class AbsoluteDifferenceOpticalFlowMixer(VideoMixerBase):
 
         video_output = cv2.VideoWriter(video_output_path, fourcc, output_fps, (output_width, output_height))
 
-        prev_left = None
-        prev_right = None
-        mask_left = None
-        mask_right = None
+        # Initialize masks and previous frames
+        _, first_left = video_capture_left.read()
+        _, first_right = video_capture_right.read()
+        
+        if first_left is None or first_right is None:
+            raise ValueError("Could not read first frames from videos")
 
-        # Denote 0 for left frame, 1 for right frame. Always write the frame that has more "wins" in the last 10 frames
-        optical_flow_history = []
+        mask_left = mask_field_from_image(first_left)
+        mask_right = mask_field_from_image(first_right)
+        
+        prev_left = prepare_frame_with_mask(first_left, mask_left)
+        prev_right = prepare_frame_with_mask(first_right, mask_right)
+        
+        # Write first frame
+        video_output.write(first_left)
+        
+        optical_flow_history = [0]  # Start with left camera
+        frames_per_flow = max(1, round(input_fps / flow_fps))  # How many frames between flow calculations
+        
+        logger.debug(f"Processing {total_frames} frames with flow calculation every {frames_per_flow} frames")
 
-        for i in tqdm(range(total_frames)):
-
+        # Process remaining frames
+        for i in tqdm(range(1, total_frames)):
             res_left, frame_left = video_capture_left.read()
             res_right, frame_right = video_capture_right.read()
 
-            if res_left is False or res_right is False:
-                break
+            logger.debug(f"Wrote mask file to {temp_dir}")
 
-            if i == 0:
-                mask_left = mask_field_from_image(frame_left)
-                mask_right = mask_field_from_image(frame_right)
-
-                masked_left = prepare_frame_with_mask(frame_left, mask_left)
-                masked_right = prepare_frame_with_mask(frame_right, mask_right)
-
-                temp_dir = tempfile.gettempdir()
-                cv2.imwrite(os.path.join(temp_dir, "mask_left.jpg"), masked_left)
-                cv2.imwrite(os.path.join(temp_dir, "mask_right.jpg"), masked_right)
-
-                logger.debug(f"Wrote mask file to {temp_dir}")
-
-                prev_left = masked_left
-                prev_right = masked_right
-                continue
-
-            # Write every flow_fps'th frame
-            if i < flow_fps:
-                video_output.write(frame_left)
-            elif i % flow_fps == 0:
-
+            # Calculate optical flow on regular intervals
+            if i % frames_per_flow == 0:
                 masked_left = prepare_frame_with_mask(frame_left, mask_left)
                 masked_right = prepare_frame_with_mask(frame_right, mask_right)
 
@@ -161,29 +161,30 @@ class AbsoluteDifferenceOpticalFlowMixer(VideoMixerBase):
                 left_movement = np.sum(thresh_l)
                 right_movement = np.sum(thresh_r)
 
-                if left_movement >= right_movement:
-                    optical_flow_history.append(0)
-                else:
-                    optical_flow_history.append(1)
+                # Update history
+                optical_flow_history.append(0 if left_movement >= right_movement else 1)
+                if len(optical_flow_history) > history_length:
+                    optical_flow_history = optical_flow_history[-history_length:]
 
-                last_history = optical_flow_history[-history_length:]
-                if np.mean(last_history) < 0.5:
-                    video_output.write(frame_left)
-                else:
-                    video_output.write(frame_right)
+                # Update previous frames for next flow calculation
+                prev_left = masked_left
+                prev_right = masked_right
 
-            else:
-                last_history = optical_flow_history[-history_length:]
-                if np.mean(last_history) < 0.5:
-                    video_output.write(frame_left)
-                else:
-                    video_output.write(frame_right)
+            # Write frame based on recent history
+            use_left = np.mean(optical_flow_history) < 0.5
+            video_output.write(frame_left if use_left else frame_right)
 
-            prev_left = masked_left
-            prev_right = masked_right
+            # Handle frame rate conversion if needed
+            if output_fps < input_fps and i % (input_fps // output_fps) != 0:
+                continue
+
+            if progress_callback:
+                progress = int((i / total_frames) * 100)
+                progress_callback(progress)
 
         video_capture_left.release()
         video_capture_right.release()
         video_output.release()
 
         return video_output
+

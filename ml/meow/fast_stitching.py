@@ -7,8 +7,9 @@ import argparse
 
 logger = logging.getLogger(__name__)
 
-STICHING_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__name__)))), "stitching")
+STICHING_DIR = os.path.join(os.path.dirname(os.path.abspath(__name__)), "stitching")
 BUILD_DIR = os.path.join(STICHING_DIR, "build")
+
 
 class TaskStatus(str, Enum):
     STARTED = 'started'

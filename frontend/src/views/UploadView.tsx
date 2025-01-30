@@ -35,6 +35,7 @@ const formSchema = z.object({
     endTime: z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d$/, "Please enter time in HH:MM:SS format").transform(timeToSeconds),
     uploadToYoutube: z.boolean().default(false),
     youtubeTitle: z.string().optional(),
+    burnLogo: z.boolean().default(false),
   })
 })
 
@@ -60,6 +61,7 @@ function App() {
         endTime: "00:00:00",
         uploadToYoutube: false,
         youtubeTitle: "",
+        burnLogo: false,
       },
     },
   })
@@ -295,6 +297,22 @@ function App() {
                             )}
                           />
                         )}
+                        <FormField
+                          control={form.control}
+                          name="settings.burnLogo"
+                          render={({ field }) => (
+                            <FormItem className="flex items-center space-x-2">
+                              <FormControl>
+                                <Checkbox 
+                                  checked={field.value}
+                                  onCheckedChange={field.onChange}
+                                  className="styled-checkbox"
+                                />
+                              </FormControl>
+                              <FormLabel className="rt-Text !mt-0">Burn Logo</FormLabel>
+                            </FormItem>
+                          )}
+                        />
                       </AccordionContent>
                     </AccordionItem>
                   </Accordion>

@@ -26,4 +26,5 @@ if __name__ == "__main__":
     CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
     DATA_FOLDER = os.path.join(os.path.dirname(CURRENT_DIR), 'data')
     LOGO_FOLDER = os.path.join(os.path.dirname(os.path.dirname(CURRENT_DIR)), 'frontend/assets')
-    burn_logo(os.path.join(DATA_FOLDER, 'example_videos_left', 'keparoicam_left_part1.mp4'), os.path.join(LOGO_FOLDER, 'blinking_logo.gif'), os.path.join(DATA_FOLDER, 'blinking_logo_on_video.mp4'))
+    MEOW_TEMP_FOLDER = "/media/jakki/Qumran/Videos/meow_tmp"
+    burn_logo(os.path.join(MEOW_TEMP_FOLDER, 'stitching_result_30012025.mp4'), os.path.join(LOGO_FOLDER, 'blinking_logo.gif'), os.path.join(MEOW_TEMP_FOLDER, 'stitching_result_30012025_with_logo.mp4'))

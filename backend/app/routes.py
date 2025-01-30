@@ -37,7 +37,8 @@ def send_status_update(task_id: str, status: TaskStatus, step: str, total_progre
 
 def analyze_video(left_videos: t.List[UploadFile], right_videos: t.List[UploadFile], task_id: str,
                  video_processing_type: str = "panoramaStitching", output_fps: int = 30, 
-                 start_time: float = None, end_time: float = None, upload_to_youtube: bool = False, youtube_title: str = "Meow Match Video"):
+                 start_time: float = None, end_time: float = None, upload_to_youtube: bool = False, 
+                 youtube_title: str = "Meow Match Video", burn_logo: bool = False):
     try:
         # Initial status update
         send_status_update(task_id, TaskStatus.STARTED, "Preparing videos", 0)
@@ -94,7 +95,8 @@ def analyze_video(left_videos: t.List[UploadFile], right_videos: t.List[UploadFi
             start_time=start_time,
             end_time=end_time,
             progress_callback=progress_callback,
-            youtube_title=youtube_title
+            youtube_title=youtube_title,
+            burn_logo=burn_logo
         )
 
         # Final status update with payload
@@ -138,9 +140,11 @@ async def create_new_task(files: list[UploadFile], metadata: Annotated[str, Form
     end_time = settings["endTime"]
     upload_to_youtube = settings["uploadToYoutube"]
     youtube_title = settings["youtubeTitle"]
+    burn_logo = settings["burnLogo"]
     background_tasks.add_task(analyze_video, left_videos=left_videos, right_videos=right_videos, task_id=task_id,
                               video_processing_type=video_processing_type, output_fps=output_fps, start_time=start_time,
-                              end_time=end_time, upload_to_youtube=upload_to_youtube, youtube_title=youtube_title)
+                              end_time=end_time, upload_to_youtube=upload_to_youtube, youtube_title=youtube_title,
+                              burn_logo=burn_logo)
 
     response = {'task_id': task_id}
     return response

@@ -6,11 +6,6 @@ ENV NODE_PATH=/node_modules
 ENV PATH=$PATH:/node_modules/.bin
 RUN npm install
 
-WORKDIR /app
-ADD . /app
+COPY . .
 
-EXPOSE 8000
-EXPOSE 35729
-
-ENTRYPOINT ["/bin/bash", "/app/run.sh"]
-CMD ["start"]
+CMD ["npm", "run", "dev"]

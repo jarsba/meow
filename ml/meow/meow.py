@@ -17,6 +17,7 @@ from .utils.video_utils import ffmpeg_concatenate_video_clips, get_video_info
 from .utils.file_utils import create_temporary_file_name_with_extension
 from .audio_synchronizer import sync_and_mix_audio
 from .abs_diff_optical_flow_mixer import AbsoluteDifferenceOpticalFlowMixer
+from .logo_burner import burn_logo
 from .youtube_uploader import upload_video
 import ffmpeg
 import cv2
@@ -34,6 +35,9 @@ LOG_LEVEL_STR_MAPPING = {
 logging.basicConfig(level=LOG_LEVEL_STR_MAPPING[LOG_LEVEL])
 logger = logging.getLogger(__name__)
 
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+LOGO_FOLDER = os.path.join(os.path.dirname(os.path.dirname(CURRENT_DIR)), 'frontend/assets')
+
 
 class TaskStatus(str, Enum):
     STARTED = 'started'
@@ -44,9 +48,9 @@ class TaskStatus(str, Enum):
 def run_with_args(left_videos: List[str], right_videos: List[str], output: str = 'meow_output.mp4',
                   use_mixer: bool = True, use_panorama_stitching: bool = False, upload_to_Youtube: bool = False,
                   file_type: str = "mp4", output_fps: int = 30, save_intermediate: bool = False,
-                  output_directory: str = None, start_time: Optional[float] = None, end_time: Optional[float] = None,
+                  mixer_type: str = "farneback", output_directory: str = None, start_time: Optional[float] = None, end_time: Optional[float] = None,
                   progress_callback: Callable[[str, TaskStatus, int], None] = None,
-                  youtube_title: str = "Meow Match Video", *args, **kwargs):
+                  youtube_title: str = "Meow Match Video", use_logo: bool = False, make_sample: bool = False, *args, **kwargs):
     """Run meow process:
         1. Sort videos
         2. Concatenate videos
@@ -56,7 +60,8 @@ def run_with_args(left_videos: List[str], right_videos: List[str], output: str =
         6. Merge audiotracks to keep audio coherent
         7. Cut videos and audio to game start and end
         8. Either mix videos using VideoMixer or create panorama video using Stitcher
-        9. Either return link to download video or upload to Youtube (not supported yet)
+        9. Burn logo on video if needed
+        10. Either return link to download video or upload to Youtube (not supported yet)
     """
 
     try:
@@ -152,15 +157,15 @@ def run_with_args(left_videos: List[str], right_videos: List[str], output: str =
                 # We need to take to account delay as this will shift our start and game time
                 # Assumed that start time and end time is coming from left camera
                 # We subtract delay from start time if delay is positive (left camera video is delay sec. ahead of right)
-
+                # We add delay to end time if delay is positive (left camera video is delay sec. ahead of right)
                 if start_time is None and end_time is not None:
                     start_time = 0
                     end_time = end_time if delay > 0 else end_time - delay
                 elif start_time is not None and end_time is None:
-                    start_time = start_time if delay > 0 else start_time
+                    start_time = start_time if delay > 0 else start_time - delay
                     left_video_info = get_video_info(synchronized_left_video_path)
                     right_video_info = get_video_info(synchronized_right_video_path)
-                    end_time = min(left_video_info["duration"], right_video_info["duration"])
+                    end_time = min(left_video_info["duration"], right_video_info["duration"]) 
                 else:
                     start_time = start_time if delay > 0 else start_time - delay
                     end_time = end_time if delay > 0 else end_time - delay
@@ -218,9 +223,19 @@ def run_with_args(left_videos: List[str], right_videos: List[str], output: str =
                 progress_callback("Editing videos", TaskStatus.FINISHED, 80)
                 progress_callback("Finalizing video", TaskStatus.STARTED, 80)
 
+            # Create temporary path for video with logo if needed
+            if use_logo:
+                video_with_logo_path = create_temporary_file_name_with_extension(temp_dir, file_type)
+                burn_logo(processed_video_path, 
+                         os.path.join(LOGO_FOLDER, 'blinking_logo.gif'),
+                         video_with_logo_path)
+                video_to_merge = video_with_logo_path
+            else:
+                video_to_merge = processed_video_path
+
             # Final video assembly
             final_video_path = output
-            input_video = ffmpeg.input(processed_video_path)
+            input_video = ffmpeg.input(video_to_merge)
             input_audio = ffmpeg.input(merged_audio_path)
 
             ffmpeg.output(
@@ -299,6 +314,13 @@ def parse_arguments():
                         help="start time of the game as HH:MM:SS string")
     parser.add_argument("-et", "--end-time", default=None, dest="end_time",
                         help="end time of the game as HH:MM:SS string")
+    parser.add_argument("-mt", "--mixer-type", default="farneback", dest="mixer_type",
+                        help="type of mixer to use, either farneback or abs_diff")
+    parser.add_argument("--use-logo", default=False, action='store_true', dest="use_logo",
+                        help="burn logo on video")
+    parser.add_argument("--make-sample", default=False, action='store_true', dest="make_sample",
+                        help="make sample video (2 min. long) for testing. make sure that the first video is longer than 2 min.")
+
     # Meta arguments
     parser.add_argument("-v", "--verbose", action='store_true', dest='verbose', help="verbose output")
     args = parser.parse_args()
@@ -311,8 +333,10 @@ def run():
 
     if (args_dict['use_mixer'] is False and args_dict['use_panorama_stitching'] is False) \
             or (args_dict['use_mixer'] is True and args_dict['use_panorama_stitching'] is True):
-        logger.error("Either mixer or panorama stitching must be selected.")
-        sys.exit(1)
+        raise ValueError("Either mixer or panorama stitching must be selected.")
+
+    if args_dict['make_sample'] is True and args_dict['end_time'] is not None:
+        raise ValueError("Cannot make sample video with end time. Sample video is 2 min. long and starts from 00:00:00 or start time. Make sure to use only start time and the first video is longer than 2 min.")
 
     if args_dict['verbose'] is True:
         logging.basicConfig(level=logging.DEBUG)

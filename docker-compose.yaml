@@ -1,0 +1,27 @@
+version: '3.7'
+services:
+  frontend:
+    build:
+      context: frontend
+      dockerfile: Dockerfile
+    ports:
+      - 3000:3000
+    volumes:
+      - ./frontend:/app
+
+  backend:
+    build:
+      context: backend
+      dockerfile: Dockerfile
+    volumes:
+      - ./backend:/app
+
+  ml:
+    build:
+      context: ml
+      dockerfile: Dockerfile
+    volumes:
+      - ./ml:/app
+  
+  
+
