@@ -110,68 +110,88 @@ cmake ..
 make
 ```
 
-You can either run the application from the command line or use the web-application.
+## Usage
 
-3. Run the application with web-interface:
+You can run meow either through the web interface or command line.
 
-Using Docker:
+### Web Interface
 
+1. Start the application:
 ```bash
+# Using Docker
 docker compose up
-```
 
-or on local machine:
-
-```bash
+# Or on local machine
 ./run.sh
 ```
 
+2. Open `http://localhost:3000` in your browser
+3. Drop your video files and configure processing options
+4. Click "Process Videos" to start
 
+### Command Line
 
-3. Run the application from the command line:
+Run meow from command line:
 ```bash
-python3 -m ml.meow 
+python3 -m ml.meow.meow [options]
 ```
 
 Available arguments:
 
 | Category | Argument | Description | Default |
 |----------|----------|-------------|---------|
-| **Basic Arguments** |
-| | `-l, --left-videos` | Path to the directory containing left camera videos | Required |
-| | `-r, --right-videos` | Path to the directory containing right camera videos | Required |
-| | `-o, --output` | Path of the video output file | `meow_output.mp4` |
-| **Processing Options** |
-| | `-m, --mixer` | Use video mixer mode (cannot be used with --panorama) | `False` |
-| | `-p, --panorama` | Use panorama stitching mode (cannot be used with --mixer) | `False` |
-| | `-mt, --mixer-type` | Type of mixer to use: "farneback" or "abs_diff" | `farneback` |
-| **Video Timing** |
-| | `-st, --start-time` | Start time of the game as HH:MM:SS | None |
-| | `-et, --end-time` | End time of the game as HH:MM:SS | None |
+| **Input** |
+| | `-l, --left-videos` | Path to a single left camera video file | Required* |
+| | `-ld, --left-directory` | Path to directory with left camera videos | Required* |
+| | `-r, --right-videos` | Path to a single right camera video file | Required* |
+| | `-rd, --right-directory` | Path to directory with right camera videos | Required* |
+| | `-o, --output` | Path of the output video file | `meow_output.mp4` |
+| **Processing Mode** |
+| | `-m, --mixer` | Use video mixer mode | `False` |
+| | `-p, --panorama` | Use panorama stitching mode | `False` |
+| | `-mt, --mixer-type` | Mixer type: "farneback" or "abs_diff" | `farneback` |
+| **Video Options** |
+| | `-st, --start-time` | Start time as HH:MM:SS | Full video |
+| | `-et, --end-time` | End time as HH:MM:SS | Full video |
+| | `-t, --file-type` | Video file type (without dot) | `mp4` |
+| | `--use-logo` | Add logo overlay | `False` |
 | **Output Options** |
-| | `-t, --file-type` | File type for videos without dot | `mp4` |
-| | `-YT, --upload-YT` | Automatically upload to Youtube | `False` |
-| | `--use-logo` | Burn logo on video | `False` |
-| **Development** |
+| | `-YT, --upload-YT` | Upload to Youtube | `False` |
 | | `-s, --save` | Save intermediate files | `False` |
-| | `-od, --output-directory` | Path for the output directory | System temp |
-| | `--make-sample` | Make 2-minute sample video for testing | `False` |
-| | `-v, --verbose` | Verbose output for debugging | `False` |
+| | `-od, --output-directory` | Output directory path | System temp |
+| **Other** |
+| | `--make-sample` | Create 2-minute sample | `False` |
+| | `-v, --verbose` | Show debug output | `False` |
+
+\* Input Requirements:
+- For single videos: Use `-l` and `-r`
+- For multiple videos in folders: Use `-ld` and `-rd`
+- Cannot mix single files and directories
 
 Example usage:
 ```bash
-# Basic panorama stitching
-python3 -m ml.meow -l ./left_videos -r ./right_videos -p -o game.mp4
+# Process single video files with panorama stitching
+python3 -m ml.meow.meow -l game_left.mp4 -r game_right.mp4 -p -o game_panorama.mp4
 
-# Video mixing with timing
-python3 -m ml.meow -l ./left_videos -r ./right_videos -m -st 00:05:00 -et 01:35:00
+# Process multiple videos from directories with mixing
+python3 -m ml.meow.meow -ld ./left_videos -rd ./right_videos -m -st 00:05:00 -et 01:35:00
 
-# Create sample panorama with logo
-python3 -m ml.meow -l ./left_videos -r ./right_videos -p --make-sample --use-logo
+# Create sample with logo from single files
+python3 -m ml.meow.meow -l left.mp4 -r right.mp4 -p --make-sample --use-logo
 
-# Full game with YouTube upload
-python3 -m ml.meow -l ./left_videos -r ./right_videos -m -YT -o "Game Highlights.mp4"
+# Process and upload to YouTube
+python3 -m ml.meow.meow -l left.mp4 -r right.mp4 -m -YT -o "Game Highlights.mp4"
+
+# Process with all intermediate files saved
+python3 -m ml.meow.meow -l left.mp4 -r right.mp4 -p -s -od ./output_files
 ```
+
+**Note**: When using directories (`-ld` and `-rd`), meow will automatically:
+1. Find all video files in the directories
+2. Sort them by similarity
+3. Concatenate them in the correct order
+
+When using single files (`-l` and `-r`), these steps are skipped as the videos are assumed to be complete and ready for processing.
 
 
 ### Flowchart of the application

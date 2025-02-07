@@ -7,9 +7,6 @@ import ffmpeg
 from moviepy.video.VideoClip import VideoClip
 from moviepy.editor import VideoFileClip, concatenate_videoclips
 import cv2
-import logging
-
-logger = logging.getLogger(__name__)
 
 
 def get_video_info(video_path) -> Dict[str, Union[int, float, str]]:
@@ -39,7 +36,6 @@ def get_video_info(video_path) -> Dict[str, Union[int, float, str]]:
 
 
 def concatenate_video_clips(video_file_paths) -> VideoClip:
-    logger.info("Concatenating videos")
     clips = [VideoFileClip(file) for file in video_file_paths]
     final_clip = concatenate_videoclips(clips)
     return final_clip

@@ -2,10 +2,9 @@ import cv2
 import numpy as np
 import glob
 from typing import Tuple, Union
-import logging
+from .logger import setup_logger
 
-logger = logging.getLogger(__name__)
-
+logger = setup_logger(__name__)
 
 def calibrate_camera(calibration_image_path: str, checkerboard_size: Tuple[int, int] = (7, 9), image_type: str = "jpg") -> Union[Tuple, None]:
     criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
@@ -47,5 +46,5 @@ def calibrate_camera(calibration_image_path: str, checkerboard_size: Tuple[int, 
     if ret is True:
         return matrix, distortion, r_vecs, t_vecs
     else:
-        logging.warning(f"Camera calibration failed")
+        logger.warning(f"Camera calibration failed")
         return None

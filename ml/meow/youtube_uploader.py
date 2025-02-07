@@ -6,13 +6,13 @@ import googleapiclient.discovery
 import googleapiclient.errors
 from googleapiclient.discovery import Resource
 from googleapiclient.http import MediaFileUpload
+from .logger import setup_logger
 
-logger = logging.getLogger(__name__)
+logger = setup_logger(__name__)
 
 # Set up constants
 MEOW_PATH = os.path.dirname(os.path.abspath(__name__))
 CLIENT_SECRETS_FILE = os.path.join(MEOW_PATH, "google_oauth.json")
-print(CLIENT_SECRETS_FILE)
 
 SCOPES = ["https://www.googleapis.com/auth/youtube.upload"]
 API_SERVICE_NAME = "youtube"

@@ -4,8 +4,9 @@ from enum import Enum
 from typing import Optional, Callable
 import logging
 import argparse
+from .logger import setup_logger
 
-logger = logging.getLogger(__name__)
+logger = setup_logger(__name__)
 
 STICHING_DIR = os.path.join(os.path.dirname(os.path.abspath(__name__)), "stitching")
 BUILD_DIR = os.path.join(STICHING_DIR, "build")

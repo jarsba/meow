@@ -13,7 +13,7 @@ def burn_logo(video_path, gif_path, output_path):
         watermark = VideoFileClip(gif_path, has_mask=True) \
             .loop() \
             .set_duration(clip.duration) \
-            .resize(height=150) \
+            .resize(height=250) \
             .margin(right=8, bottom=8, opacity=0) \
             .set_pos(("right", "bottom"))
 

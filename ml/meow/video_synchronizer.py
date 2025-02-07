@@ -3,9 +3,9 @@ from moviepy.tools import subprocess_call
 from moviepy.config import get_setting
 from .utils.video_utils import get_video_info
 from moviepy.video.io.VideoFileClip import VideoFileClip
-import logging
+from .logger import setup_logger
 
-logger = logging.getLogger(__name__)
+logger = setup_logger(__name__)
 
 
 def ffmpeg_extract_subclip(filename: str, t1: float, t2: float, target_name: str = None):
@@ -36,6 +36,8 @@ def synchronize_videos(video1_path: str, video2_path: str, delay: float, video1_
     """Delay is calculated based on video1 relative position to video2. If delay is positive, video1 is playing delay
     amount of time before video2 and video1 needs to delayed, meaning that we need to cut delay amount of time from the
     start of video2. If delay is negative, we need to do opposite."""
+
+    logger.debug("Starting video synchronization")
 
     video1_info = get_video_info(video1_path)
     video2_info = get_video_info(video2_path)

@@ -22,22 +22,14 @@ from .youtube_uploader import upload_video
 import ffmpeg
 import cv2
 import logging
+from .logger import setup_logger
 
 load_dotenv()
-
-LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
-
-LOG_LEVEL_STR_MAPPING = {
-    'INFO': logging.INFO,
-    'DEBUG': logging.DEBUG
-}
-
-logging.basicConfig(level=LOG_LEVEL_STR_MAPPING[LOG_LEVEL])
-logger = logging.getLogger(__name__)
 
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 LOGO_FOLDER = os.path.join(os.path.dirname(os.path.dirname(CURRENT_DIR)), 'frontend/assets')
 
+logger = setup_logger(__name__)
 
 class TaskStatus(str, Enum):
     STARTED = 'started'
@@ -293,10 +285,19 @@ def run_with_args(left_videos: List[str], right_videos: List[str], output: str =
 
 def parse_arguments():
     parser = argparse.ArgumentParser(prog='meow', description='Stitch videos to panorama')
-    # Basic arguments
-    parser.add_argument("-l", "--left-videos", required=True, dest='left_videos', help="path to the left video files")
-    parser.add_argument("-r", "--right-videos", required=True, dest='right_videos',
-                        help="path to the right video files")
+    # Basic arguments - modify to handle both files and directories
+    input_group = parser.add_mutually_exclusive_group()
+    input_group.add_argument("-l", "--left-videos", dest='left_videos',
+                            help="path to the left video file or directory containing left camera videos")
+    input_group.add_argument("-ld", "--left-directory", dest='left_directory',
+                            help="path to the directory containing left camera videos")
+    
+    input_group = parser.add_mutually_exclusive_group()
+    input_group.add_argument("-r", "--right-videos", dest='right_videos',
+                            help="path to the right video file or directory containing right camera videos")
+    input_group.add_argument("-rd", "--right-directory", dest='right_directory',
+                            help="path to the directory containing right camera videos")
+    
     parser.add_argument("-o", "--output", default="meow_output.mp4", dest='output',
                         help="path of the output file (default meow_output.mp4)")
     # Option arguments
@@ -339,7 +340,10 @@ def run():
         raise ValueError("Cannot make sample video with end time. Sample video is 2 min. long and starts from 00:00:00 or start time. Make sure to use only start time and the first video is longer than 2 min.")
 
     if args_dict['verbose'] is True:
-        logging.basicConfig(level=logging.DEBUG)
+        # Set all loggers to DEBUG level
+        for name in logging.root.manager.loggerDict:
+            if name.startswith('ml.meow'):
+                logging.getLogger(name).setLevel(logging.DEBUG)
 
     if args_dict['start_time'] is not None:
         start_time_components = args_dict['start_time'].split(":")
@@ -354,13 +358,28 @@ def run():
         args_dict["end_time"] = end_time
 
     file_type = args_dict['file_type']
-    left_videos_path = args_dict['left_videos']
-    right_videos_path = args_dict['right_videos']
+    
+    # Handle left videos
+    if args_dict.get('left_directory'):
+        left_videos_path = args_dict['left_directory']
+        left_videos = [os.path.join(left_videos_path, filename) for filename in os.listdir(left_videos_path) if
+                      re.search(rf'\.{file_type}$', filename, re.IGNORECASE)]
+    else:
+        left_video_path = args_dict['left_videos']
+        if not os.path.isfile(left_video_path):
+            raise ValueError(f"Left video file not found: {left_video_path}")
+        left_videos = [left_video_path]
 
-    left_videos = [os.path.join(left_videos_path, filename) for filename in os.listdir(left_videos_path) if
-                   re.search(rf'\.{file_type}$', filename, re.IGNORECASE)]
-    right_videos = [os.path.join(right_videos_path, filename) for filename in os.listdir(right_videos_path) if
-                    re.search(rf'\.{file_type}$', filename, re.IGNORECASE)]
+    # Handle right videos
+    if args_dict.get('right_directory'):
+        right_videos_path = args_dict['right_directory']
+        right_videos = [os.path.join(right_videos_path, filename) for filename in os.listdir(right_videos_path) if
+                       re.search(rf'\.{file_type}$', filename, re.IGNORECASE)]
+    else:
+        right_video_path = args_dict['right_videos']
+        if not os.path.isfile(right_video_path):
+            raise ValueError(f"Right video file not found: {right_video_path}")
+        right_videos = [right_video_path]
 
     args_dict.pop('left_videos')
     args_dict.pop('right_videos')

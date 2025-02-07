@@ -4,12 +4,13 @@ import sys
 from .utils.video_utils import get_video_info, get_last_frame
 import cv2
 import numpy as np
-import logging
+from .logger import setup_logger
 
-logger = logging.getLogger(__name__)
+logger = setup_logger(__name__)
 
 
 def calculate_video_file_linking(video_file_paths: List[str], similarity_threshold: float = 5) -> List:
+    logger.info("Calculating video file links")
 
     # Trivial case: only one video
     if len(video_file_paths) == 1:

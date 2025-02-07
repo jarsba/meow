@@ -5,10 +5,10 @@ from scipy import fft
 from scipy.signal import correlate
 import soundfile as sf
 import librosa
-import logging
 from pydub import AudioSegment
+from .logger import setup_logger
 
-logger = logging.getLogger(__name__)
+logger = setup_logger(__name__)
 
 
 def audio_fft_correlation(audio1, audio2):

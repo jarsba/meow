@@ -4,11 +4,11 @@ from .optical_flow import absolute_difference_optical_flow
 import cv2
 from tqdm import tqdm
 import numpy as np
-import logging
 import os
 import tempfile
+from .logger import setup_logger
 
-logger = logging.getLogger(__name__)
+logger = setup_logger(__name__)
 
 
 def prepare_frame(frame):
@@ -148,7 +148,7 @@ class AbsoluteDifferenceOpticalFlowMixer(VideoMixerBase):
             res_left, frame_left = video_capture_left.read()
             res_right, frame_right = video_capture_right.read()
 
-            logger.debug(f"Wrote mask file to {temp_dir}")
+            logger.debug(f"Processing frame {i}")
 
             # Calculate optical flow on regular intervals
             if i % frames_per_flow == 0:
