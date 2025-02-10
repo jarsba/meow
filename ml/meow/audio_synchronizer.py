@@ -7,7 +7,6 @@ import soundfile as sf
 import librosa
 from pydub import AudioSegment
 from .logger import setup_logger
-
 logger = setup_logger(__name__)
 
 
@@ -31,7 +30,7 @@ def audio_fft_correlation(audio1, audio2):
     return padsize, corr, ca, xmax
 
 
-def calculate_synchronization_delay(audio1: np.array, audio2: np.array, samplerate: int = 44100, comparison_length_sec: int = 180) -> float:
+def calculate_synchronization_delay(audio1: np.array, audio2: np.array, samplerate: int = 44100, comparison_length_sec: int = 300) -> float:
     """Compare first audio clip to second audio clip and calculate offset in seconds to synchronize audio inputs.
     If audios are very long, compare only the first 3 minutes of the audio.
 
@@ -124,6 +123,7 @@ def mix_audio_tracks(audio1: np.array, audio2: np.array, mix_ratio=(0.5, 0.5)) -
 
     return stereo_mix
 
+
 def sync_and_mix_audio(file1_path, file2_path, output_path, mix_ratio=(0.5, 0.5)):
     """
     Synchronize two audio files and mix them into a stereo file with specified balance.
@@ -137,34 +137,34 @@ def sync_and_mix_audio(file1_path, file2_path, output_path, mix_ratio=(0.5, 0.5)
     # Calculate delay
     result = calculate_robust_audio_delay(file1_path, file2_path)
     delay_samples = result['delay_samples']
+    delay_ms = result['delay_ms']
+    confidence = result['confidence']
 
     # Load both files
     y1, sr = librosa.load(file1_path, mono=True)
     y2, sr = librosa.load(file2_path, mono=True)
 
-    # Ensure both arrays are the same length
-    max_length = max(len(y1), len(y2))
-    y1 = np.pad(y1, (0, max(0, max_length - len(y1))), mode='constant')
-    y2 = np.pad(y2, (0, max(0, max_length - len(y2))), mode='constant')
-
-    # Apply the delay to y2
+    # Now apply the delay by cutting from the track that's ahead
     if delay_samples > 0:
-        y2 = np.pad(y2, (delay_samples, 0), mode='constant')[:-delay_samples]
+        # Left is ahead - cut from start of left audio (like video sync)
+        y1 = y1[delay_samples:]  # Cut delay amount from start
+        y2 = y2[:len(y1)]       # Trim right to match length
     else:
-        y2 = np.pad(y2, (0, -delay_samples), mode='constant')[-delay_samples:]
+        # Right is ahead - cut from start of right audio
+        delay_samples = abs(delay_samples)
+        y2 = y2[delay_samples:]  # Cut delay amount from start
+        y1 = y1[:len(y2)]       # Trim left to match length
 
-    # Normalize both signals
+    # Normalize and mix
     y1 = y1 / np.max(np.abs(y1))
     y2 = y2 / np.max(np.abs(y2))
-
     stereo_mix = mix_audio_tracks(y1, y2)
-
-    # Save the result
+    
     sf.write(output_path, stereo_mix, sr, 'PCM_24')
 
     return {
-        'delay_ms': result['delay_ms'],
-        'confidence': result['confidence'],
+        'delay_ms': delay_ms,
+        'confidence': confidence,
         'sample_rate': sr,
         'duration': len(stereo_mix) / sr
     }
@@ -180,7 +180,7 @@ def synchronize_audios(audio1_path: np.array, audio2_path: np.array, delay: floa
 
     final_duration = min(audio1.duration_seconds, audio2.duration_seconds) - abs(delay)
 
-    if delay < 0:
+    if delay > 0:
         # Left video is ahead of right video by delay seconds
         logger.debug(f"Delay {audio1_path} by {delay} seconds")
 

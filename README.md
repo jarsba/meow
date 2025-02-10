@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="./logo.png" width="200" />
+  <img src="./assets/logo.png" width="200" />
   
   # meow
 
@@ -273,11 +273,16 @@ flowchart TD
 - [x] Create icon
 - [x] Update README with images
 - [x] Finish Synchronizer-class that determines the timecode difference between clips
-- [ ] Finish Stitcher-class that stitches the two synchronized clips together
+- [x] Finish Stitcher-class that stitches the two synchronized clips together
 - [x] Add object detector for detecting football
-- [ ] Add automated panning motion to video based on football location
 - [x] Add intelligent video concatenator, if clips are in multiple parts
 - [x] Add web-application for file drop
-- [ ] Add Youtube-integration
-- [ ] Add documentation, so anyone else can meow also with their cameras!
-
+- [x] Add Youtube-integration
+- [x] Add documentation, so anyone else can meow also with their cameras!
+- [ ] Add automated panning motion to video based on football location
+- [ ] Add optional team logo overlay to video
+- [ ] Add performance optimizations like parallelizing video processing
+- [ ] Split meow into smaller modules like VideoProcessor, AudioProcessor, etc.
+- [ ] Add configuration management
+- [ ] Add automatic camera lens calibration software that can pass information to fast_stitcher
+- [ ] Add better recovery handling that can pick up from where it left off

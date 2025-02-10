@@ -72,10 +72,12 @@ bool isSimilarColor(const cv::Vec3b& pixel, const cv::Vec3b& reference, int tole
 
 
 // Optimized version of findLargestInteriorRectangle
-cv::Rect findLargestInteriorRectangle(const cv::Mat& image, bool use_approximate = false) {
+cv::Rect findLargestInteriorRectangle(const cv::Mat& image, bool use_approximate = false, bool debug = false) {
     cv::Mat binary;
     cv::cvtColor(image, binary, cv::COLOR_BGR2GRAY);
-    cv::threshold(binary, binary, 1, 255, cv::THRESH_BINARY); // Now we can use simple threshold since borders are black
+    
+    cv::GaussianBlur(binary, binary, cv::Size(5, 5), 0);
+    cv::threshold(binary, binary, 1, 255, cv::THRESH_BINARY);
 
     int padding_h = use_approximate ? 50 : 0;   
     int padding_v = use_approximate ? 150 : 0;
@@ -83,7 +85,7 @@ cv::Rect findLargestInteriorRectangle(const cv::Mat& image, bool use_approximate
     // Find the largest rectangle
     cv::Rect largest_rect(0, 0, 0, 0);
     int max_area = 0;
-    
+        
     // Pre-compute horizontal histograms for each row
     std::vector<std::vector<int>> h_lengths(binary.rows, std::vector<int>(binary.cols));
     
@@ -155,7 +157,29 @@ cv::Rect findLargestInteriorRectangle(const cv::Mat& image, bool use_approximate
         largest_rect = cv::Rect(new_x, new_y, new_width, new_height);
     }
 
-    cv::imwrite("binary_mask.png", binary);
+    // If in debug mode, create a visualization
+    if (debug) {
+        cv::Mat debug_vis;
+        cv::cvtColor(binary, debug_vis, cv::COLOR_GRAY2BGR);  // Convert to BGR for colored rectangle
+        
+        // Draw the largest rectangle in red
+        if (!largest_rect.empty()) {
+            cv::rectangle(debug_vis, largest_rect, cv::Scalar(0, 0, 255), 2);  // Red color, thickness 2
+        }
+        
+        cv::imwrite("binary_mask_with_rect.png", debug_vis);
+        cv::imwrite("binary_mask.png", binary);
+        
+        // Also save the original frame with rectangle for reference
+        cv::Mat original_with_rect = image.clone();
+        if (!largest_rect.empty()) {
+            cv::rectangle(original_with_rect, largest_rect, cv::Scalar(0, 0, 255), 2);
+        }
+        cv::imwrite("original_with_rect.png", original_with_rect);
+    } else {
+        cv::imwrite("binary_mask.png", binary);
+    }
+
     return largest_rect;
 }
 
@@ -195,8 +219,22 @@ void App::run_stitching() {
 
     // Apply LIR if requested
     if (use_lir_) {
-        crop_rect = findLargestInteriorRectangle(image_concat_mat, true);  // Use approximate mode
+        crop_rect = findLargestInteriorRectangle(image_concat_mat, true, dry_run_);  // Enable debug output in dry run
         cropped_frame = image_concat_mat(crop_rect);
+        
+        if (dry_run_) {
+            // Save additional debug information
+            std::cout << "LIR Debug Info:" << std::endl;
+            std::cout << "Crop rectangle: x=" << crop_rect.x << ", y=" << crop_rect.y 
+                      << ", width=" << crop_rect.width << ", height=" << crop_rect.height << std::endl;
+            std::cout << "Original image size: " << image_concat_mat.cols << "x" << image_concat_mat.rows << std::endl;
+            
+            // Calculate and output the crop percentage
+            double crop_area = crop_rect.width * crop_rect.height;
+            double total_area = image_concat_mat.cols * image_concat_mat.rows;
+            double crop_percentage = (crop_area / total_area) * 100.0;
+            std::cout << "Crop percentage: " << crop_percentage << "% of original area" << std::endl;
+        }
     } else {
         cropped_frame = image_concat_mat;  // Use full image without cropping
     }

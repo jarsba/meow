@@ -2,13 +2,20 @@ import moviepy.editor as mp
 import os
 from scipy.io.wavfile import read
 import numpy as np
-from typing import Tuple
+from typing import Tuple, Optional
 import math
+import subprocess
 from .math_utils import safe_division
+from .file_utils import create_temporary_file_name_with_extension
 from tqdm import tqdm
 from pydub import AudioSegment
 from scipy import signal
 import pyloudnorm as pyln
+from ..logger import setup_logger
+import ffmpeg
+import librosa
+
+logger = setup_logger(__name__)
 
 
 def extract_audio(video_path) -> mp.AudioClip:
@@ -16,6 +23,17 @@ def extract_audio(video_path) -> mp.AudioClip:
     audio = video.audio
     return audio
 
+
+def extract_audio_from_video_ffmpeg(video_path, output_path, temp_dir):
+
+    if output_path is None:
+        output_path = create_temporary_file_name_with_extension(temp_dir, 'wav')
+
+    audio_path = create_temporary_file_name_with_extension(temp_dir, 'wav')
+    subprocess.run([
+        'ffmpeg', '-i', video_path, '-q:a', '0', '-map', '0:a', audio_path
+    ])
+    return audio_path
 
 def write_to_file(audio: mp.AudioClip, path, filename, extension="mp3"):
     audio.write_audiofile(os.path.join(path, f"{filename}.{extension}"))
@@ -198,3 +216,59 @@ def butter_highpass_filter(data: np.ndarray, cutoff: float, samplerate: float, o
     b, a = signal.butter(order, normal_cutoff, btype='high', analog=False)
     y = signal.filtfilt(b, a, data)
     return y
+
+
+def butter_bandpass_filter(data: np.ndarray, lowcut: float, highcut: float, samplerate: float, order: int = 5) -> np.ndarray:
+    nyq = 0.5 * samplerate
+    low = lowcut / nyq
+    high = highcut / nyq
+    b, a = signal.butter(order, [low, high], btype='band')
+    y = signal.filtfilt(b, a, data)
+    return y
+
+
+def cut_audio_clip(audio_path: str, start_time: float, end_time: float, output_path: Optional[str] = None, temp_dir: Optional[str] = None):
+    """
+        Cut audio clip with ffmpeg based on start and end time.
+
+        Args:
+            audio_path: Path to the audio file to cut
+            start_time: Start time of the clip in seconds
+            end_time: End time of the clip in seconds
+            output_path: Path to save the cut audio file
+            temp_dir: Directory to save the cut audio file
+    """
+
+    if output_path is None:
+        output_path = create_temporary_file_name_with_extension(temp_dir, 'wav')
+
+    audio = AudioSegment.from_file(audio_path)
+    audio = audio[start_time * 1000:end_time * 1000]
+    audio.export(output_path, format="wav")
+    logger.debug(f"Cut audio clip saved to {output_path}")
+
+    return output_path
+
+
+def spectral_noise_reduction(audio: np.ndarray, sr: int) -> np.ndarray:
+    """Remove noise using spectral gating."""
+    D = librosa.stft(audio)
+    
+    noise_profile = np.mean(np.abs(D[:, :sr//2]), axis=1)
+    
+    D_denoised = D * (np.abs(D) > 2 * noise_profile[:, np.newaxis])
+    
+    return librosa.istft(D_denoised)
+
+
+def compress_dynamic_range(audio: np.ndarray, threshold: float, ratio: float) -> np.ndarray:
+    """Apply compression to reduce dynamic range."""
+    threshold_linear = 10.0 ** (threshold/20.0)
+    
+    gain_mask = audio > threshold_linear
+    gain_reduction = np.zeros_like(audio)
+    gain_reduction[gain_mask] = (1.0/ratio - 1.0) * (audio[gain_mask] - threshold_linear)
+    
+    audio_compressed = audio + gain_reduction
+    
+    return audio_compressed / np.max(np.abs(audio_compressed))

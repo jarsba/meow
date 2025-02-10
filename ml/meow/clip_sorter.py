@@ -1,5 +1,6 @@
 from typing import Mapping, List
 import sys
+import os
 
 from .utils.video_utils import get_video_info, get_last_frame
 import cv2
@@ -16,27 +17,51 @@ def calculate_video_file_linking(video_file_paths: List[str], similarity_thresho
     if len(video_file_paths) == 1:
         return video_file_paths
 
+    # Extract frames first
     frame_mapping = extract_end_frames(video_file_paths)
-    similarity_matrix = calculate_similarity_matrix(frame_mapping)
+    
+    # Calculate similarity matrix
+    similarity_matrix = calculate_similarity_matrix(video_file_paths, frame_mapping)
+    
+    n_files = len(video_file_paths)
 
+    # Find N-1 best matches (excluding diagonal and duplicates)
+    matches = set()  # Use set to avoid duplicates
+    for i in range(2 * n_files):
+        for j in range(2 * n_files):
+            # Skip diagonal elements and lower triangle
+            if i//2 < j//2:  # Different files, upper triangle only
+                matches.add((i, j, similarity_matrix[i][j]))
+    
+    # Sort by similarity score
+    matches = sorted(matches, key=lambda x: x[2])
+    best_matches = matches[:n_files-1]
+    
+    # Build video mapping from best matches
     video_end_to_start_mapping = {}
-
-    for key, values in similarity_matrix.items():
-        key1 = key[0]
-        key2 = key[1]
-        value1 = values[0]
-        value2 = values[1]
-
-        if value1 < similarity_threshold:
-            add_edge(video_end_to_start_mapping, key2, key1)
-        if value2 < similarity_threshold:
-            add_edge(video_end_to_start_mapping, key1, key2)
-
-    logger.debug(video_end_to_start_mapping)
-
-    video_file_linking = find_linking(video_end_to_start_mapping)
-
-    return video_file_linking
+    for i, j, score in best_matches:
+        # If comparing first frame of file i (i is even)
+        # then file j's last frame matches file i's first frame
+        # so the link should be from j to i
+        if i % 2 == 0:
+            file1 = video_file_paths[j//2]  # From file with matching last frame
+            file2 = video_file_paths[i//2]  # To file with matching first frame
+        # If comparing last frame of file i (i is odd)
+        # then file i's last frame matches file j's first frame
+        # so the link should be from i to j
+        else:
+            file1 = video_file_paths[i//2]  # From file with matching last frame
+            file2 = video_file_paths[j//2]  # To file with matching first frame
+            
+        logger.debug(f"Best match: {os.path.basename(file1)} -> {os.path.basename(file2)} (score: {score:.4f})")
+        add_edge(video_end_to_start_mapping, file1, file2)
+    
+    try:
+        video_file_linking = find_linking(video_end_to_start_mapping)
+        return video_file_linking
+    except RuntimeError as e:
+        logger.error("Failed to find valid video linking with best matches")
+        raise
 
 
 def extract_end_frames(video_file_paths: List[str]) -> Mapping:
@@ -69,21 +94,36 @@ def extract_end_frames(video_file_paths: List[str]) -> Mapping:
     return frame_mapping
 
 
-def calculate_similarity_matrix(frame_mapping: Mapping) -> Mapping:
-    similarity_matrix = {}
-
-    for i, pair1 in enumerate(frame_mapping.items()):
-        for j, pair2 in enumerate(frame_mapping.items()):
+def calculate_similarity_matrix(video_file_paths: List[str], frame_mapping: Mapping) -> List[List[float]]:
+    # Build similarity matrix
+    n_files = len(video_file_paths)
+    similarity_matrix = [[0.0] * (2 * n_files) for _ in range(2 * n_files)]
+    
+    # Calculate similarities between all frames
+    for i, file1 in enumerate(video_file_paths):
+        frames1 = frame_mapping[file1]
+        for j, file2 in enumerate(video_file_paths):
+            frames2 = frame_mapping[file2]
+            
+            # Only calculate upper triangle to avoid duplicates
             if i < j:
-                key1, values1 = pair1
-                key2, values2 = pair2
-
-                first_vs_last = calculate_frame_similarity(values1['first_frame'], values2['last_frame'])
-                last_vs_first = calculate_frame_similarity(values1['last_frame'], values2['first_frame'])
-
-                similarity_matrix[(key1, key2)] = [first_vs_last, last_vs_first]
-
-    logger.debug(similarity_matrix)
+                # Compare first frame of file1 to both frames of file2
+                similarity_matrix[i*2][j*2] = calculate_frame_similarity(
+                    frames1['first_frame'], frames2['first_frame'])
+                similarity_matrix[i*2][j*2+1] = calculate_frame_similarity(
+                    frames1['first_frame'], frames2['last_frame'])
+                
+                # Compare last frame of file1 to both frames of file2
+                similarity_matrix[i*2+1][j*2] = calculate_frame_similarity(
+                    frames1['last_frame'], frames2['first_frame'])
+                similarity_matrix[i*2+1][j*2+1] = calculate_frame_similarity(
+                    frames1['last_frame'], frames2['last_frame'])
+                
+                # Mirror the values to lower triangle
+                similarity_matrix[j*2][i*2] = similarity_matrix[i*2][j*2]
+                similarity_matrix[j*2][i*2+1] = similarity_matrix[i*2][j*2+1]
+                similarity_matrix[j*2+1][i*2] = similarity_matrix[i*2+1][j*2]
+                similarity_matrix[j*2+1][i*2+1] = similarity_matrix[i*2+1][j*2+1]
 
     return similarity_matrix
 

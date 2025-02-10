@@ -1,0 +1,11 @@
+# Vähän huono stitching, mutta riittävän hyvä
+matsi_23082022
+/media/jakki/Seagate_Expansion_Drive/keparoi/2022/matsi_23082022/left/vasen_23082022_matsi_cut.mp4
+/media/jakki/Seagate_Expansion_Drive/keparoi/2022/matsi_23082022/right/oikea_23082022_matsi_cut.mp4
+00:00:00
+
+# Melko hyvä, stichingiä ja blendausta voisi parantaa
+matsi_30082022
+/media/jakki/Seagate_Expansion_Drive/keparoi/2022/matsi_30082022/left
+/media/jakki/Seagate_Expansion_Drive/keparoi/2022/matsi_30082022/right
+00:04:32

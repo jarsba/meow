@@ -70,8 +70,7 @@ def call_image_stitching(
         return_code = process.poll()
         if return_code != 0:
             error = process.stderr.read()
-            logger.error(f"Stitching failed with code {return_code}: {error}")
-            return None
+            raise Exception(f"Stitching failed with code {return_code}: {error}")
 
         output_file = os.path.join(output_dir, output_filename)
         return output_file

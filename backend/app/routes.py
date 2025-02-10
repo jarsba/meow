@@ -96,7 +96,8 @@ def analyze_video(left_videos: t.List[UploadFile], right_videos: t.List[UploadFi
             end_time=end_time,
             progress_callback=progress_callback,
             youtube_title=youtube_title,
-            burn_logo=burn_logo
+            burn_logo=burn_logo,
+            auto_yes=True
         )
 
         # Final status update with payload
