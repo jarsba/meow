@@ -72,7 +72,6 @@ def ffmpeg_concatenate_video_clips(video_file_paths: List[str], output_path: Opt
     with open(merged_video_list_file.name, 'w') as f:
         for video in video_file_paths:
             escaped_path = f"'{video.replace(chr(92), chr(92)*2).replace(chr(39), chr(92)+chr(39))}'"
-            print(escaped_path)
             f.write(f"file {escaped_path}\n")
 
     merged_video_list_file.seek(0)

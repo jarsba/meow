@@ -249,9 +249,7 @@ def create_blinking_logo(logo_path, blink_duration=0.5):
 
 if __name__ == "__main__":
     CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-    print(CURRENT_DIR)
     LOGO_FOLDER = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(CURRENT_DIR))), 'frontend/assets')
-    print(LOGO_FOLDER)
     frames = create_blinking_logo(os.path.join(LOGO_FOLDER, 'logo.png'), blink_duration=0.5)
     save_transparent_gif(frames, 5, os.path.join(LOGO_FOLDER, 'blinking_logo.gif'))
 

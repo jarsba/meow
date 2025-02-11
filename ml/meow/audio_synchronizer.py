@@ -135,6 +135,9 @@ def sync_and_mix_audio(file1_path, file2_path, output_path, mix_ratio=(0.5, 0.5)
     mix_ratio (tuple): (left_ratio, right_ratio) for mixing the files (default: 0.5, 0.5)
     """
     # Calculate delay
+
+    logger.info(f"Calculating delay between {file1_path} and {file2_path}")
+
     result = calculate_robust_audio_delay(file1_path, file2_path)
     delay_samples = result['delay_samples']
     delay_ms = result['delay_ms']
@@ -144,21 +147,32 @@ def sync_and_mix_audio(file1_path, file2_path, output_path, mix_ratio=(0.5, 0.5)
     y1, sr = librosa.load(file1_path, mono=True)
     y2, sr = librosa.load(file2_path, mono=True)
 
-    # Now apply the delay by cutting from the track that's ahead
-    if delay_samples > 0:
-        # Left is ahead - cut from start of left audio (like video sync)
-        y1 = y1[delay_samples:]  # Cut delay amount from start
-        y2 = y2[:len(y1)]       # Trim right to match length
-    else:
-        # Right is ahead - cut from start of right audio
-        delay_samples = abs(delay_samples)
-        y2 = y2[delay_samples:]  # Cut delay amount from start
-        y1 = y1[:len(y2)]       # Trim left to match length
+    if len(y1) == 0:
+        raise ValueError(f"Left audio file is empty: {file1_path}")
+    if len(y2) == 0:
+        raise ValueError(f"Right audio file is empty: {file2_path}")
 
-    # Normalize and mix
-    y1 = y1 / np.max(np.abs(y1))
-    y2 = y2 / np.max(np.abs(y2))
-    stereo_mix = mix_audio_tracks(y1, y2)
+    # First synchronize by cutting the delayed audio
+    if delay_samples > 0:
+        # Left is ahead - cut start of left audio
+        y1 = y1[delay_samples:]
+    else:
+        # Right is ahead - cut start of right audio
+        delay_samples = abs(delay_samples)
+        y2 = y2[delay_samples:]
+
+    # Now both audios start at the same time
+    # Make them the same length by padding the shorter one
+    max_length = max(len(y1), len(y2))
+    y1 = np.pad(y1, (0, max_length - len(y1)), mode='constant')
+    y2 = np.pad(y2, (0, max_length - len(y2)), mode='constant')
+
+    # Normalize both signals
+    y1 = y1 / np.max(np.abs(y1)) if np.max(np.abs(y1)) > 0 else y1
+    y2 = y2 / np.max(np.abs(y2)) if np.max(np.abs(y2)) > 0 else y2
+
+    # Create stereo mix
+    stereo_mix = mix_audio_tracks(y1, y2, mix_ratio)
     
     sf.write(output_path, stereo_mix, sr, 'PCM_24')
 

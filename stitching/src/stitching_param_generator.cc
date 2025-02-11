@@ -58,87 +58,100 @@ StitchingParamGenerator::StitchingParamGenerator(
 }
 
 void StitchingParamGenerator::InitCameraParam() {
-  Ptr<Feature2D> finder;
-  finder = SIFT::create();
-  std::vector<ImageFeatures> features(num_img_);
-  std::vector<Size> full_img_sizes(num_img_);
-  for (int i = 0; i < num_img_; ++i) {
-    computeImageFeatures(finder, image_vector_[i], features[i]);
-    features[i].img_idx = i;
-    LOGLN("Features in image #" << i + 1 << ": " << features[i].keypoints.size());
-  }
-  LOGLN("Pairwise matching");
-  std::vector<MatchesInfo> pairwise_matches;
-  Ptr<FeaturesMatcher> matcher;
-  if (matcher_type == "affine")
-    matcher = makePtr<AffineBestOf2NearestMatcher>(false, try_cuda, match_conf);
-  else if (range_width == -1)
-    matcher = makePtr<BestOf2NearestMatcher>(try_cuda, match_conf);
-  else
-    matcher = makePtr<BestOf2NearestRangeMatcher>(range_width, try_cuda,
-                                                  match_conf);
-  (*matcher)(features, pairwise_matches);
-  matcher->collectGarbage();
+    // Feature detection
+    Ptr<Feature2D> finder = SIFT::create();
+    std::vector<ImageFeatures> features(num_img_);
 
-  // Check if we should save matches graph
-  if (save_graph) {
-    LOGLN("Saving matches graph...");
-    ofstream f(save_graph_to.c_str());
-    f << matchesGraphAsString(img_names, pairwise_matches, conf_thresh);
-  }
-  Ptr<Estimator> estimator;
-  if (estimator_type == "affine")
-    estimator = makePtr<AffineBasedEstimator>();
-  else
-    estimator = makePtr<HomographyBasedEstimator>();
-  if (!(*estimator)(features, pairwise_matches, camera_params_vector_)) {
-    std::cout << "Homography estimation failed.\n";
-    assert(false);
-  }
-  for (auto& i : camera_params_vector_) {
-    Mat R;
-    i.R.convertTo(R, CV_32F);
-    i.R = R;
-  }
-  Ptr<detail::BundleAdjusterBase> adjuster;
-  if (ba_cost_func == "reproj")
-    adjuster = makePtr<detail::BundleAdjusterReproj>();
-  else if (ba_cost_func == "ray")
-    adjuster = makePtr<detail::BundleAdjusterRay>();
-  else if (ba_cost_func == "affine")
-    adjuster =
-        makePtr<detail::BundleAdjusterAffinePartial>();
-  else if (ba_cost_func == "no") adjuster = makePtr<NoBundleAdjuster>();
-  else {
-    std::cout << "Unknown bundle adjustment cost function: '"
-              << ba_cost_func
-              << "'.\n";
-    assert(false);
-  }
-  adjuster->setConfThresh(conf_thresh);
-  Mat_<uchar> refine_mask = Mat::zeros(3, 3, CV_8U);
-  if (ba_refine_mask[0] == 'x') refine_mask(0, 0) = 1;
-  if (ba_refine_mask[1] == 'x') refine_mask(0, 1) = 1;
-  if (ba_refine_mask[2] == 'x') refine_mask(0, 2) = 1;
-  if (ba_refine_mask[3] == 'x') refine_mask(1, 1) = 1;
-  if (ba_refine_mask[4] == 'x') refine_mask(1, 2) = 1;
-  adjuster->setRefinementMask(refine_mask);
-  if (!(*adjuster)(features, pairwise_matches, camera_params_vector_)) {
-    std::cout << "Camera parameters adjusting failed.\n";
-    assert(false);
-  }
+    // Detect features for each image
+    for (int i = 0; i < num_img_; ++i) {
+        computeImageFeatures(finder, image_vector_[i], features[i]);
+        features[i].img_idx = i;
+        
+        if (features[i].keypoints.size() < 10) {
+            LOGLN("Warning: Failed to find enough features in camera " << i + 1 
+                  << " (" << features[i].keypoints.size() << " found)");
+        }
+        LOGLN("Features in image #" << i + 1 << ": " << features[i].keypoints.size());
+    }
 
-  std::vector<Mat> rmats;
-  for (auto& i : camera_params_vector_)
-    rmats.push_back(i.R.clone());
-  waveCorrect(rmats, wave_correct);
-  for (size_t i = 0; i < camera_params_vector_.size(); ++i) {
-    camera_params_vector_[i].R = rmats[i];
-    LOGLN("Initial camera intrinsics #"
-              << i + 1 << ":\nK:\n"
-              << camera_params_vector_[i].K()
-              << "\nR:\n" << camera_params_vector_[i].R);
-  }
+    // Match features between images
+    LOGLN("Pairwise matching");
+    std::vector<MatchesInfo> pairwise_matches;
+    Ptr<FeaturesMatcher> matcher = makePtr<BestOf2NearestMatcher>(try_cuda, match_conf);
+    if (matcher_type == "affine")
+      matcher = makePtr<AffineBestOf2NearestMatcher>(false, try_cuda, match_conf);
+    else if (range_width == -1)
+      matcher = makePtr<BestOf2NearestMatcher>(try_cuda, match_conf);
+    else
+      matcher = makePtr<BestOf2NearestRangeMatcher>(range_width, try_cuda,
+                                                    match_conf);
+    (*matcher)(features, pairwise_matches);
+    matcher->collectGarbage();
+
+    // Check if we have any good matches
+    for (const auto& match_info : pairwise_matches) {
+        if (match_info.confidence < 0.7) {
+            LOGLN("Warning: Low confidence in feature matches between images " 
+        }
+    }
+
+    if (save_graph) {
+      LOGLN("Saving matches graph...");
+      ofstream f(save_graph_to.c_str());
+      f << matchesGraphAsString(img_names, pairwise_matches, conf_thresh);
+    }
+
+    // Estimate camera parameters
+    Ptr<Estimator> estimator = makePtr<HomographyBasedEstimator>();
+    if (!(*estimator)(features, pairwise_matches, camera_params_vector_)) {
+        LOGLN("Error: Failed to estimate camera positions. Check camera setup and overlap.");
+        assert(false);
+    }
+
+    for (auto& i : camera_params_vector_) {
+        Mat R;
+        i.R.convertTo(R, CV_32F);
+        i.R = R;
+    }
+    Ptr<detail::BundleAdjusterBase> adjuster;
+    if (ba_cost_func == "reproj")
+        adjuster = makePtr<detail::BundleAdjusterReproj>();
+    else if (ba_cost_func == "ray")
+        adjuster = makePtr<detail::BundleAdjusterRay>();
+    else if (ba_cost_func == "affine")
+        adjuster =
+            makePtr<detail::BundleAdjusterAffinePartial>();
+    else if (ba_cost_func == "no") adjuster = makePtr<NoBundleAdjuster>();
+    else {
+        std::cout << "Unknown bundle adjustment cost function: '"
+                  << ba_cost_func
+                  << "'.\n";
+        assert(false);
+    }
+    adjuster->setConfThresh(conf_thresh);
+    Mat_<uchar> refine_mask = Mat::zeros(3, 3, CV_8U);
+    if (ba_refine_mask[0] == 'x') refine_mask(0, 0) = 1;
+    if (ba_refine_mask[1] == 'x') refine_mask(0, 1) = 1;
+    if (ba_refine_mask[2] == 'x') refine_mask(0, 2) = 1;
+    if (ba_refine_mask[3] == 'x') refine_mask(1, 1) = 1;
+    if (ba_refine_mask[4] == 'x') refine_mask(1, 2) = 1;
+    adjuster->setRefinementMask(refine_mask);
+    if (!(*adjuster)(features, pairwise_matches, camera_params_vector_)) {
+        std::cout << "Camera parameters adjusting failed.\n";
+        assert(false);
+    }
+
+    std::vector<Mat> rmats;
+    for (auto& i : camera_params_vector_)
+        rmats.push_back(i.R.clone());
+    waveCorrect(rmats, wave_correct);
+    for (size_t i = 0; i < camera_params_vector_.size(); ++i) {
+        camera_params_vector_[i].R = rmats[i];
+        LOGLN("Initial camera intrinsics #"
+                  << i + 1 << ":\nK:\n"
+                  << camera_params_vector_[i].K()
+                  << "\nR:\n" << camera_params_vector_[i].R);
+    }
 }
 
 void StitchingParamGenerator::InitWarper() {

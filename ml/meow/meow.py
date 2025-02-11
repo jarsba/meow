@@ -190,6 +190,7 @@ def run_with_args(left_videos: List[str], right_videos: List[str], output_name: 
                 right_audio_path, 
                 merged_audio_path
             )
+            logger.info(f"Audio synchronized and mixed in: {merged_audio_path}")
             delay = audio_result["delay_ms"] / 1000  # Convert to seconds
 
             if progress_callback:
@@ -208,7 +209,6 @@ def run_with_args(left_videos: List[str], right_videos: List[str], output_name: 
             logger.debug(f"Synchronized videos found from {synchronized_left_video_path} for left "
                          f"and {synchronized_right_video_path} for right")
 
-
             left_video_info = get_video_info(synchronized_left_video_path)
             right_video_info = get_video_info(synchronized_right_video_path)
             duration = min(left_video_info["duration"], right_video_info["duration"]) 
@@ -221,7 +221,7 @@ def run_with_args(left_videos: List[str], right_videos: List[str], output_name: 
 
                     # We need to adjust the times because they were relative to the original unsynchronized video
                     adjusted_start_time, adjusted_end_time = determine_start_and_end_time(delay, start_time, end_time, duration)
-                    logger.debug(f"Cutting video based on time range: {adjusted_start_time}s - {adjusted_end_time}s")
+                    logger.info(f"Cutting video based on time range: {adjusted_start_time}s - {adjusted_end_time}s")
 
                     # Cut both videos and audio using adjusted times
                     preprocessed_video_left_path, preprocessed_video_right_path = cut_clips_with_ffmpeg(
@@ -232,14 +232,14 @@ def run_with_args(left_videos: List[str], right_videos: List[str], output_name: 
                             synchronized_left_video_path, 
                             synchronized_right_video_path
                     )
+                    # Cut audio using the same adjusted times
+                    logger.info(f"Cutting audio based on time range: {adjusted_start_time}s - {adjusted_end_time}s")
+                    preprocessed_audio_path = cut_audio_clip(merged_audio_path, adjusted_start_time, adjusted_end_time, temp_dir=temp_dir)
+
                 else:
                     preprocessed_video_left_path = synchronized_left_video_path
                     preprocessed_video_right_path = synchronized_right_video_path
-
-                # Cut audio using the same adjusted times
-                logger.info(f"Cutting audio based on time range: {adjusted_start_time}s - {adjusted_end_time}s")
-                preprocessed_audio_path = cut_audio_clip(merged_audio_path, adjusted_start_time, adjusted_end_time, temp_dir=temp_dir)
-            
+                    preprocessed_audio_path = merged_audio_path
             else:
                 preprocessed_video_left_path = synchronized_left_video_path
                 preprocessed_video_right_path = synchronized_right_video_path
@@ -295,11 +295,6 @@ def run_with_args(left_videos: List[str], right_videos: List[str], output_name: 
                 video_to_merge = video_with_logo_path
             else:
                 video_to_merge = processed_video_path
-
-            if make_sample:
-                # Modify output filename to indicate it's a sample
-                full_output_name = f"{output_name}_sample.{output_file_type}"
-                logger.info(f"Sample video will be saved as: {full_output_name}")
 
             # Final video assembly
             final_video_path = full_output_name
