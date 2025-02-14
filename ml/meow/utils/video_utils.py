@@ -13,6 +13,7 @@ from moviepy.config import get_setting
 from moviepy.video.io.VideoFileClip import VideoFileClip
 import cv2
 from ..logger import setup_logger
+import subprocess
 
 import os
 
@@ -46,6 +47,11 @@ def get_video_info(video_path) -> Dict[str, Union[int, float, str]]:
         "duration": duration
     }
 
+
+def get_num_frames(video_path: str) -> int:
+    video_streams = [s for s in ffmpeg.probe(video_path)["streams"] if s["codec_type"] == "video"]
+    assert len(video_streams) == 1
+    return int(video_streams[0]["nb_frames"])
 
 def concatenate_video_clips(video_file_paths) -> VideoClip:
     clips = [VideoFileClip(file) for file in video_file_paths]
@@ -98,38 +104,81 @@ def get_last_frame(capture, duration):
     return success, last_frame
 
 
-def transform_video_fps(video_path: str, output_fps: int, output_path: Optional[str] = None, temp_dir: Optional[str] = None, file_type: Optional[str] = None):
-    """Transform video FPS by re-encoding while preserving audio.
-    
-    Args:
-        video_path: Input video path
-        output_path: Output video path
-        output_fps: Target FPS
-    """
-    
+def run_ffmpeg_fps_transform_with_progress(input_path: str, output_path: str, output_fps: int, vcodec: str, hw_accel: Optional[str] = None, total_frames: Optional[int] = None):
+    try:
+        if hw_accel is not None:
+            logger.info(f"Transforming video FPS to {output_fps} using {hw_accel} acceleration")
+            stream = (
+                ffmpeg
+                .input(input_path)
+                .output(output_path,
+                        r=output_fps,
+                        vcodec=vcodec,
+                        acodec='copy',
+                        preset='fast',
+                        **{'nostdin': None}
+                )
+                .global_args('-hwaccel', hw_accel)
+                .overwrite_output()
+            )
+        else:
+            logger.info(f"Transforming video FPS to {output_fps} using software encoding")
+            stream = (
+                ffmpeg
+                .input(input_path)
+                .output(output_path,
+                        r=output_fps,
+                        vcodec=vcodec,
+                        acodec='copy',
+                        preset='fast',
+                        **{'nostdin': None}
+                )
+                .overwrite_output()
+            )
+
+        stream.run()
+        logger.info(f"Successfully transformed FPS using {vcodec}")
+        return output_path
+
+    except ffmpeg.Error as e:
+        logger.debug(f"{vcodec} acceleration failed: {str(e)}")
+        raise
+
+
+def transform_video_fps(input_path: str, output_fps: int, output_path: Optional[str] = None, temp_dir: Optional[str] = None, file_type: Optional[str] = None) -> str:
+    """Transform video FPS using hardware acceleration when available.
+    Falls back to software encoding if hardware acceleration fails."""
     if output_path is None:
         output_path = create_temporary_file_name_with_extension(temp_dir, file_type)
-
-    logger.info(f"Transforming video FPS from {output_fps} to {output_path}")
-
-    stream = ffmpeg.input(video_path)
     
-    # Split into video and audio streams
-    video = stream.video
-    audio = stream.audio
+    logger.info(f"Transforming video FPS to {output_fps} using hardware acceleration")
     
-    # Apply FPS filter only to video stream
-    video = ffmpeg.filter(video, 'fps', fps=output_fps)
-    
-    # Output with both streams
-    stream = ffmpeg.output(video, audio, output_path,
-                         vcodec='libx264',  # Use H.264 codec
-                         acodec='copy',     # Copy audio without re-encoding
-                         preset='ultrafast'  # Use fastest encoding preset
-                         ).global_args('-nostdin')
-    ffmpeg.run(stream, overwrite_output=True)
+    # Check available hardware encoders
+    hw_encoders = get_available_hw_encoders()
+    video_info = get_video_info(input_path)
+    input_fps = video_info['frame_rate']
+    input_frames = get_num_frames(input_path)
 
-    return output_path
+        # Calculate expected output frames
+    if output_fps < input_fps:
+        # When reducing FPS, frames will be dropped
+        total_frames = int(input_frames * (output_fps / input_fps))
+    else:
+        # When increasing FPS or keeping same, no frames dropped
+        total_frames = input_frames
+
+
+    if hw_encoders['nvidia']:
+        return run_ffmpeg_fps_transform_with_progress(input_path, output_path, output_fps, 'h264_nvenc', 'cuda', total_frames)
+    
+    if hw_encoders['quicksync']:
+        return run_ffmpeg_fps_transform_with_progress(input_path, output_path, output_fps, 'h264_qsv', 'qsv', total_frames)
+    
+    if hw_encoders['vaapi']:
+        return run_ffmpeg_fps_transform_with_progress(input_path, output_path, output_fps, 'h264_vaapi', 'vaapi', total_frames)
+    
+    logger.info("No working hardware acceleration found, falling back to software encoding")
+    return run_ffmpeg_fps_transform_with_progress(input_path, output_path, output_fps, 'libx264', None, total_frames)
 
 
 def cut_subclip_with_ffmpeg(input_path: str, output_path: str, start_time: float, end_time: float, output_args: dict):
@@ -211,3 +260,44 @@ def merge_video_and_audio(video_path: str, audio_path: str, output_path: str, ou
         t=duration,  # Set the correct duration
         shortest=None  # End when shortest input ends
     ).global_args('-nostdin').run(overwrite_output=overwrite)
+
+
+def get_available_hw_encoders() -> dict:
+    """Check available hardware encoders using ffmpeg."""
+    logger.debug("Checking available hardware encoders")
+    encoders = {
+        'nvidia': False,
+        'quicksync': False,
+        'vaapi': False
+    }
+
+    try:
+        result = subprocess.run(    
+            ['ffmpeg', '-encoders'],
+            capture_output=True,
+            text=True
+        )
+
+        output = result.stdout.lower()
+
+        if 'h264_nvenc' in output:
+            encoders['nvidia'] = True
+            logger.debug("NVIDIA NVENC encoder available")
+            
+        if 'h264_qsv' in output:
+            encoders['quicksync'] = True
+            logger.debug("Intel QuickSync encoder available")
+            
+        if 'h264_vaapi' in output:
+            encoders['vaapi'] = True
+            logger.debug("VAAPI encoder available")
+        
+        
+    except Exception as e:
+        logger.error(f"Error checking hardware encoders: {str(e)}")
+
+    return encoders
+
+
+if __name__ == "__main__":
+    print(get_available_hw_encoders())

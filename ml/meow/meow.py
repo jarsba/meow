@@ -12,7 +12,7 @@ from moviepy.audio.io.AudioFileClip import AudioFileClip
 from .fast_stitching import call_image_stitching
 from .clip_sorter import calculate_video_file_linking
 from .video_synchronizer import synchronize_videos
-from .utils.video_utils import ffmpeg_concatenate_video_clips, get_video_info, transform_video_fps, cut_clips_with_ffmpeg, merge_video_and_audio
+from .utils.video_utils import ffmpeg_concatenate_video_clips, get_video_info, cut_clips_with_ffmpeg, merge_video_and_audio, transform_video_fps
 from .utils.file_utils import create_temporary_file_name_with_extension
 from .audio_synchronizer import sync_and_mix_audio
 from .utils.audio_utils import cut_audio_clip
@@ -100,9 +100,6 @@ def run_with_args(left_videos: List[str], right_videos: List[str], output_name: 
             # Skip FPS transform for sample video as we want make it fast
             needs_fps_transform = False
             output_fps = input_fps
-
-        if needs_fps_transform:
-            logger.info(f"Transforming video FPS from {input_fps} to {output_fps}")
 
         if progress_callback:
             progress_callback("Sorting videos", TaskStatus.STARTED, 5)
@@ -213,33 +210,27 @@ def run_with_args(left_videos: List[str], right_videos: List[str], output_name: 
             right_video_info = get_video_info(synchronized_right_video_path)
             duration = min(left_video_info["duration"], right_video_info["duration"]) 
 
-            if start_time is not None or end_time is not None:
+            # Skip time range processing for sample video as it is already cut for speed
+            if (start_time is not None or end_time is not None) and not make_sample:
                 logger.debug("Processing time range request")
                 
-                # Skip time range processing for sample video as it is already cut for speed
-                if not make_sample:
+                # We need to adjust the times because they were relative to the original unsynchronized video
+                adjusted_start_time, adjusted_end_time = determine_start_and_end_time(delay, start_time, end_time, duration)
+                logger.info(f"Cutting video based on time range: {adjusted_start_time}s - {adjusted_end_time}s")
 
-                    # We need to adjust the times because they were relative to the original unsynchronized video
-                    adjusted_start_time, adjusted_end_time = determine_start_and_end_time(delay, start_time, end_time, duration)
-                    logger.info(f"Cutting video based on time range: {adjusted_start_time}s - {adjusted_end_time}s")
+                # Cut both videos and audio using adjusted times
+                preprocessed_video_left_path, preprocessed_video_right_path = cut_clips_with_ffmpeg(
+                        temp_dir, 
+                        output_file_type, 
+                        adjusted_start_time, 
+                        adjusted_end_time, 
+                        synchronized_left_video_path, 
+                        synchronized_right_video_path
+                )
+                # Cut audio using the same adjusted times
+                logger.info(f"Cutting audio based on time range: {adjusted_start_time}s - {adjusted_end_time}s")
+                preprocessed_audio_path = cut_audio_clip(merged_audio_path, adjusted_start_time, adjusted_end_time, temp_dir=temp_dir)
 
-                    # Cut both videos and audio using adjusted times
-                    preprocessed_video_left_path, preprocessed_video_right_path = cut_clips_with_ffmpeg(
-                            temp_dir, 
-                            output_file_type, 
-                            adjusted_start_time, 
-                            adjusted_end_time, 
-                            synchronized_left_video_path, 
-                            synchronized_right_video_path
-                    )
-                    # Cut audio using the same adjusted times
-                    logger.info(f"Cutting audio based on time range: {adjusted_start_time}s - {adjusted_end_time}s")
-                    preprocessed_audio_path = cut_audio_clip(merged_audio_path, adjusted_start_time, adjusted_end_time, temp_dir=temp_dir)
-
-                else:
-                    preprocessed_video_left_path = synchronized_left_video_path
-                    preprocessed_video_right_path = synchronized_right_video_path
-                    preprocessed_audio_path = merged_audio_path
             else:
                 preprocessed_video_left_path = synchronized_left_video_path
                 preprocessed_video_right_path = synchronized_right_video_path
