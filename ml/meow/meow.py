@@ -43,7 +43,7 @@ def run_with_args(left_videos: List[str], right_videos: List[str], output_name: 
                   use_mixer: bool = True, use_panorama_stitching: bool = False, upload_to_Youtube: bool = False,
                   output_file_type: Optional[str] = None, output_fps: int = 30, save_intermediate: bool = False,
                   mixer_type: str = "farneback", output_directory: Optional[str] = None, start_time: Optional[float] = None, end_time: Optional[float] = None,
-                  progress_callback: Optional[Callable[[str, TaskStatus, int], None]] = None, determine_output_file_type: bool = True,
+                  progress_callback: Optional[Callable[[str, TaskStatus, int], None]] = None, determine_output_file_type: bool = True, delay: Optional[float] = None,
                   youtube_title: str = "Meow Match Video", use_logo: bool = False, make_sample: bool = False, auto_yes: bool = False, *args, **kwargs):
     """Run meow process:
         1. Sort videos
@@ -58,6 +58,8 @@ def run_with_args(left_videos: List[str], right_videos: List[str], output_name: 
         10. Either return link to download video or upload to Youtube (not supported yet)
     """
 
+    print(locals())
+
     try:
         if progress_callback:
             progress_callback("Video processing", TaskStatus.STARTED, 5)
@@ -68,6 +70,8 @@ def run_with_args(left_videos: List[str], right_videos: List[str], output_name: 
         input_fps = round(video_info['frame_rate'])
         input_file_type = video_info['file_type']
         needs_fps_transform = input_fps != output_fps
+        if needs_fps_transform:
+            logger.info(f"Input FPS: {input_fps}, output FPS: {output_fps}, will transform FPS")
 
         if os.path.exists(output_name):
             if not auto_yes:
@@ -136,6 +140,11 @@ def run_with_args(left_videos: List[str], right_videos: List[str], output_name: 
             else:
                 left_video_path = ffmpeg_concatenate_video_clips(left_videos_sorted, temp_dir=temp_dir, file_type=output_file_type)
 
+            # Write audio as mono for synchronization
+            logger.info("Extracting left audio")
+            left_audio_path = create_temporary_file_name_with_extension(temp_dir, 'wav')
+            AudioFileClip(left_video_path).write_audiofile(left_audio_path, ffmpeg_params=["-ac", "1"])
+
             if needs_fps_transform:
                 temp_path = transform_video_fps(left_video_path, output_fps, temp_dir=temp_dir, file_type=output_file_type)
                 left_video_path = temp_path
@@ -144,6 +153,12 @@ def run_with_args(left_videos: List[str], right_videos: List[str], output_name: 
                 right_video_path = right_videos_sorted[0]
             else:
                 right_video_path = ffmpeg_concatenate_video_clips(right_videos_sorted, temp_dir=temp_dir, file_type=output_file_type)
+
+            logger.info("Extracting right audio")
+            right_audio_path = create_temporary_file_name_with_extension(temp_dir, 'wav')
+            AudioFileClip(right_video_path).write_audiofile(right_audio_path, ffmpeg_params=["-ac", "1"])
+            
+            logger.debug(f"Extracted audio, files found from {left_audio_path} for left and {right_audio_path} for right")
 
             if needs_fps_transform:
                 temp_path = transform_video_fps(right_video_path, output_fps, temp_dir=temp_dir, file_type=output_file_type)
@@ -163,16 +178,6 @@ def run_with_args(left_videos: List[str], right_videos: List[str], output_name: 
                         right_video_path
                 )
 
-            left_audio_path = create_temporary_file_name_with_extension(temp_dir, 'wav')
-            right_audio_path = create_temporary_file_name_with_extension(temp_dir, 'wav')
-
-            # Write audio as mono for synchronization
-            logger.info("Writing audio files")
-            AudioFileClip(left_video_path).write_audiofile(left_audio_path, ffmpeg_params=["-ac", "1"])
-            AudioFileClip(right_video_path).write_audiofile(right_audio_path, ffmpeg_params=["-ac", "1"])
-            logger.debug(f"Writing audio, files found from {left_audio_path} for left "
-                         f"and {right_audio_path} for right")
-
             if progress_callback:
                 progress_callback("Concatenating files", TaskStatus.FINISHED, 15)
                 progress_callback("Synchronizing audio", TaskStatus.STARTED, 15)
@@ -185,10 +190,15 @@ def run_with_args(left_videos: List[str], right_videos: List[str], output_name: 
             audio_result = sync_and_mix_audio(
                 left_audio_path, 
                 right_audio_path, 
-                merged_audio_path
+                merged_audio_path,
+                delay=delay
             )
             logger.info(f"Audio synchronized and mixed in: {merged_audio_path}")
-            delay = audio_result["delay_ms"] / 1000  # Convert to seconds
+            if delay is None:
+                delay = audio_result["delay_ms"] / 1000  # Convert to seconds
+            else:
+                logger.info(f"Using delay from command line: {delay} ms")
+                delay = delay / 1000
 
             if progress_callback:
                 progress_callback("Mixing audio", TaskStatus.FINISHED, 20)
@@ -368,6 +378,7 @@ def parse_arguments():
     
     parser.add_argument("-o", "--output", default="meow_output", dest='output_name',
                         help="path of the output file (default meow_output). If contains filetype, it will be used as output filetype unless -t option is used.")
+    parser.add_argument("--fps", default=30, dest='output_fps', help="output fps")
     # Option arguments
     parser.add_argument("-t", "--file-type", dest='output_file_type', help="file type for output video (without dot)")
     parser.add_argument("-m", "--mixer", default=False, action='store_true', dest='use_mixer', help="use video mixer")
@@ -383,6 +394,8 @@ def parse_arguments():
                         help="start time of the game as HH:MM:SS string")
     parser.add_argument("-et", "--end-time", default=None, dest="end_time",
                         help="end time of the game as HH:MM:SS string")
+    parser.add_argument("--delay", default=None, dest="delay",
+                        help="delay in milliseconds between left and right videos, example 500 would be half a second delay")
     parser.add_argument("-mt", "--mixer-type", default="farneback", dest="mixer_type",
                         help="type of mixer to use, either farneback or abs_diff")
     parser.add_argument("--use-logo", default=False, action='store_true', dest="use_logo",
@@ -457,6 +470,12 @@ def run():
 
     args_dict.pop('left_videos')
     args_dict.pop('right_videos')
+
+    if args_dict['output_fps'] is not None:
+        args_dict['output_fps'] = int(args_dict['output_fps'])
+
+    if args_dict['delay'] is not None:
+        args_dict['delay'] = float(args_dict['delay'])
 
     video_path = run_with_args(left_videos=left_videos, right_videos=right_videos, **args_dict)
     logger.info(f"Video ready, path: {video_path}")

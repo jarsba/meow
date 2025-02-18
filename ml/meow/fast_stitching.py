@@ -41,6 +41,8 @@ def call_image_stitching(
         right_file_path
     ]
 
+    logger.debug(f"Calling image stitching with command: {' '.join(stitching_command)}")
+
     try:
         # Use Popen instead of run to get real-time output
         process = subprocess.Popen(

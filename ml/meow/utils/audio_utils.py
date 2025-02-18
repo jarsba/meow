@@ -161,3 +161,69 @@ def compress_dynamic_range(audio: np.ndarray, threshold: float, ratio: float) ->
     audio_compressed = audio + gain_reduction
     
     return audio_compressed / np.max(np.abs(audio_compressed))
+
+
+def remove_wind_noise(audio: np.ndarray, frame_size: int = 2048, overlap: float = 0.75) -> np.ndarray:
+    """Remove wind noise using spectral subtraction.
+    
+    Args:
+        audio: Input audio
+        frame_size: Size of FFT frames (default 2048)
+        overlap: Overlap between frames (default 0.75)
+    
+    Returns:
+        Processed audio with reduced wind noise
+    """
+    hop_length = int(frame_size * (1 - overlap))
+    frames = librosa.util.frame(audio, frame_length=frame_size, hop_length=hop_length)
+    window = np.hanning(frame_size)
+    
+    processed_frames = []
+    for frame in frames.T:
+        windowed = frame * window
+        fft = np.fft.rfft(windowed)
+        magnitude = np.abs(fft)
+        phase = np.angle(fft)
+        
+        # Focus on low frequency range where wind noise typically occurs (0-200 Hz)
+        wind_region = magnitude[:int(len(magnitude) * 0.05)]  # First 5% of frequencies
+        noise_floor = np.mean(wind_region)
+        
+        # More conservative gain calculation
+        gain = np.ones_like(magnitude)
+        
+        # Only apply reduction to low frequencies
+        low_freq_idx = int(len(magnitude) * 0.1)  # First 10% of frequencies
+        gain[:low_freq_idx] = np.maximum(0.3, 1 - (noise_floor / (magnitude[:low_freq_idx] + 1e-10)))
+        
+        # Smooth transitions
+        gain = signal.medfilt(gain, 3)
+        
+        # Apply gain and reconstruct
+        magnitude_clean = magnitude * gain
+        fft_clean = magnitude_clean * np.exp(1j * phase)
+        frame_clean = np.fft.irfft(fft_clean)
+        
+        processed_frames.append(frame_clean[:frame_size])
+    
+    # Overlap-add reconstruction
+    output = np.zeros(len(audio))
+    for i, frame in enumerate(processed_frames):
+        start = i * hop_length
+        end = start + frame_size
+        if end > len(output):
+            break
+        output[start:end] += frame
+    
+    # Normalize but preserve some headroom
+    output = 0.95 * (output / np.max(np.abs(output)))
+    
+    return output
+
+
+def filter_claps(audio: np.ndarray, sr: int) -> np.ndarray:
+    """Filter claps from audio."""
+    
+    filtered_audio = butter_bandpass_filter(audio, 6500, 8500, sr)
+
+    return filtered_audio

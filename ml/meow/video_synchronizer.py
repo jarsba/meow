@@ -1,12 +1,12 @@
 from .utils.video_utils import get_video_info, ffmpeg_extract_subclip, get_video_info
 from .utils.file_utils import create_temporary_file_name_with_extension
-from typing import Optional
+from typing import Optional, Tuple
 from .logger import setup_logger
 
 logger = setup_logger(__name__)
 
 # If delay is positive, audio1 needs to be delayed and negative if audio2 needs to be delayed
-def synchronize_videos(video1_path: str, video2_path: str, delay: float, video1_output_path: Optional[str] = None, video2_output_path: Optional[str] = None, temp_dir: Optional[str] = None, output_file_type: Optional[str] = None):
+def synchronize_videos(video1_path: str, video2_path: str, delay: float, video1_output_path: Optional[str] = None, video2_output_path: Optional[str] = None, temp_dir: Optional[str] = None, output_file_type: Optional[str] = None) -> Tuple[str, str]:
     """Delay is calculated based on video1 relative position to video2. If delay is positive, video1 is playing delay
     amount of time before video2 and video1 needs to delayed, meaning that we need to cut delay amount of time from the
     start of video1. If delay is negative, we need to do opposite."""

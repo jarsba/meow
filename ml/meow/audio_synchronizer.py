@@ -1,5 +1,6 @@
-from typing import Tuple
+from typing import Tuple, Optional
 
+from .utils.audio_utils import butter_bandpass_filter
 import numpy as np
 from scipy import fft
 from scipy.signal import correlate
@@ -56,7 +57,7 @@ def calculate_synchronization_delay(audio1: np.array, audio2: np.array, samplera
         return -offset
 
 
-def calculate_robust_audio_delay(file1_path, file2_path):
+def calculate_robust_audio_delay(file1_path, file2_path, comparison_length_sec: int = 300):
     """
     Calculate the delay between two audio files using cross-correlation.
     Returns delay in milliseconds.
@@ -77,10 +78,13 @@ def calculate_robust_audio_delay(file1_path, file2_path):
     y1 = y1[:min_length]
     y2 = y2[:min_length]
 
-    # Apply preprocessing to reduce noise impact
-    # High-pass filter to reduce wind noise
-    y1_filtered = librosa.effects.preemphasis(y1)
-    y2_filtered = librosa.effects.preemphasis(y2)
+    # Take first 5 minutes of audio or all of it if it's less than 5 minutes
+    y1 = y1[:min(comparison_length_sec * sr1, len(y1))]
+    y2 = y2[:min(comparison_length_sec * sr2, len(y2))]
+
+    # Apply existing filters to focus on important frequencies
+    y1_filtered = butter_bandpass_filter(y1, lowcut=300, highcut=8000, samplerate=sr1)
+    y2_filtered = butter_bandpass_filter(y2, lowcut=300, highcut=8000, samplerate=sr2)
 
     # Normalize the signals
     y1_normalized = y1_filtered / np.sqrt(np.sum(y1_filtered ** 2))
@@ -124,7 +128,7 @@ def mix_audio_tracks(audio1: np.array, audio2: np.array, mix_ratio=(0.5, 0.5)) -
     return stereo_mix
 
 
-def sync_and_mix_audio(file1_path, file2_path, output_path, mix_ratio=(0.5, 0.5)):
+def sync_and_mix_audio(file1_path, file2_path, output_path, mix_ratio=(0.5, 0.5), delay: Optional[float] = None):
     """
     Synchronize two audio files and mix them into a stereo file with specified balance.
 
@@ -138,11 +142,6 @@ def sync_and_mix_audio(file1_path, file2_path, output_path, mix_ratio=(0.5, 0.5)
 
     logger.info(f"Calculating delay between {file1_path} and {file2_path}")
 
-    result = calculate_robust_audio_delay(file1_path, file2_path)
-    delay_samples = result['delay_samples']
-    delay_ms = result['delay_ms']
-    confidence = result['confidence']
-
     # Load both files
     y1, sr = librosa.load(file1_path, mono=True)
     y2, sr = librosa.load(file2_path, mono=True)
@@ -151,6 +150,17 @@ def sync_and_mix_audio(file1_path, file2_path, output_path, mix_ratio=(0.5, 0.5)
         raise ValueError(f"Left audio file is empty: {file1_path}")
     if len(y2) == 0:
         raise ValueError(f"Right audio file is empty: {file2_path}")
+
+    if delay is None:
+        result = calculate_robust_audio_delay(file1_path, file2_path)
+        delay_samples = result['delay_samples']
+        delay_ms = result['delay_ms']
+        confidence = result['confidence']
+    else:
+        logger.debug(f"Using delay from command line: {delay} ms")
+        delay_ms = delay
+        delay_samples = int(delay_ms / 1000) * sr
+        confidence = 1.0
 
     # First synchronize by cutting the delayed audio
     if delay_samples > 0:

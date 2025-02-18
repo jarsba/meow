@@ -73,6 +73,8 @@ def ffmpeg_concatenate_video_clips(video_file_paths: List[str], output_path: Opt
     else:
         output_video_path = output_path
 
+    logger.info(f"Concatenating videos to {output_video_path}")
+
     merged_video_list_file = NamedTemporaryFile(suffix=".txt")
 
     with open(merged_video_list_file.name, 'w') as f:
@@ -104,7 +106,7 @@ def get_last_frame(capture, duration):
     return success, last_frame
 
 
-def run_ffmpeg_fps_transform_with_progress(input_path: str, output_path: str, output_fps: int, vcodec: str, hw_accel: Optional[str] = None, total_frames: Optional[int] = None):
+def run_ffmpeg_fps_transform_with_progress(input_path: str, output_path: str, output_fps: int, vcodec: str, hw_accel: Optional[str] = None):
     try:
         if hw_accel is not None:
             logger.info(f"Transforming video FPS to {output_fps} using {hw_accel} acceleration")
@@ -115,11 +117,9 @@ def run_ffmpeg_fps_transform_with_progress(input_path: str, output_path: str, ou
                         r=output_fps,
                         vcodec=vcodec,
                         acodec='copy',
-                        preset='fast',
-                        **{'nostdin': None}
+                        crf=24,
                 )
                 .global_args('-hwaccel', hw_accel)
-                .overwrite_output()
             )
         else:
             logger.info(f"Transforming video FPS to {output_fps} using software encoding")
@@ -130,10 +130,8 @@ def run_ffmpeg_fps_transform_with_progress(input_path: str, output_path: str, ou
                         r=output_fps,
                         vcodec=vcodec,
                         acodec='copy',
-                        preset='fast',
-                        **{'nostdin': None}
+                        crf=24,
                 )
-                .overwrite_output()
             )
 
         stream.run()
@@ -155,30 +153,18 @@ def transform_video_fps(input_path: str, output_fps: int, output_path: Optional[
     
     # Check available hardware encoders
     hw_encoders = get_available_hw_encoders()
-    video_info = get_video_info(input_path)
-    input_fps = video_info['frame_rate']
-    input_frames = get_num_frames(input_path)
-
-        # Calculate expected output frames
-    if output_fps < input_fps:
-        # When reducing FPS, frames will be dropped
-        total_frames = int(input_frames * (output_fps / input_fps))
-    else:
-        # When increasing FPS or keeping same, no frames dropped
-        total_frames = input_frames
-
 
     if hw_encoders['nvidia']:
-        return run_ffmpeg_fps_transform_with_progress(input_path, output_path, output_fps, 'h264_nvenc', 'cuda', total_frames)
+        return run_ffmpeg_fps_transform_with_progress(input_path, output_path, output_fps, 'h264_nvenc', 'cuda')
     
     if hw_encoders['quicksync']:
-        return run_ffmpeg_fps_transform_with_progress(input_path, output_path, output_fps, 'h264_qsv', 'qsv', total_frames)
+        return run_ffmpeg_fps_transform_with_progress(input_path, output_path, output_fps, 'h264_qsv', 'qsv')
     
     if hw_encoders['vaapi']:
-        return run_ffmpeg_fps_transform_with_progress(input_path, output_path, output_fps, 'h264_vaapi', 'vaapi', total_frames)
+        return run_ffmpeg_fps_transform_with_progress(input_path, output_path, output_fps, 'h264_vaapi', 'vaapi')
     
     logger.info("No working hardware acceleration found, falling back to software encoding")
-    return run_ffmpeg_fps_transform_with_progress(input_path, output_path, output_fps, 'libx264', None, total_frames)
+    return run_ffmpeg_fps_transform_with_progress(input_path, output_path, output_fps, 'libx265', None)
 
 
 def cut_subclip_with_ffmpeg(input_path: str, output_path: str, start_time: float, end_time: float, output_args: dict):

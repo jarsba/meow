@@ -20,6 +20,36 @@ meow is a video processing tool designed to create panoramic videos from two cam
 - Progress tracking and status updates
 - Web-interface for easy file drop
 
+## How to meow
+
+<table>
+<tr>
+  <td align="center">
+    <img src="assets/field.png" width="300"/><br/>
+    <b>Record videos</b><br/>
+  </td>
+  <td align="center">
+    <img src="assets/meow_ui.png" width="300"/><br/>
+    <b>Upload files to meow</b><br/>
+  </td>
+  <td align="center">
+    <img src="assets/meow_panorama.jpg" width="300"/><br/>
+    <b>Enjoy your panorama video!</b><br/>
+  </td>
+</tr>
+</table>
+
+1. Requirements:
+    - Two action cameras, one for each side of the field. I use Go Pro Hero 6 Blacks. Battery life and having two similar cameras is the most important thing.
+    - A tripod or other stable support for the cameras, I use 7m tripod from Amazon.
+    - A mount for the cameras that allows you to mount two cameras in parallel. I use cheap mount from Amazon.
+2. Place the cameras in the center of the field.
+3. Start the video recording on both cameras.
+4. After recording, you should have two set of video files, one set for each camera.
+5. Start meow and process the videos.
+6. Enjoy your panorama video!
+
+
 ### Panorama Stitching Process
 
 

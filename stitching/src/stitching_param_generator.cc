@@ -68,7 +68,7 @@ void StitchingParamGenerator::InitCameraParam() {
         features[i].img_idx = i;
         
         if (features[i].keypoints.size() < 10) {
-            LOGLN("Warning: Failed to find enough features in camera " << i + 1 
+            LOGLN("Failed to find enough features in camera " << i + 1 
                   << " (" << features[i].keypoints.size() << " found)");
         }
         LOGLN("Features in image #" << i + 1 << ": " << features[i].keypoints.size());
@@ -92,7 +92,10 @@ void StitchingParamGenerator::InitCameraParam() {
     for (const auto& match_info : pairwise_matches) {
         if (match_info.confidence < 0.7) {
             LOGLN("Warning: Low confidence in feature matches between images " 
+                  << match_info.src_img_idx + 1 << " and " << match_info.dst_img_idx + 1 
+                  << " (confidence: " << match_info.confidence << ")");
         }
+
     }
 
     if (save_graph) {
@@ -376,4 +379,5 @@ void StitchingParamGenerator::GetReprojParams(
       assert (false);
     }
   }
+}
 }

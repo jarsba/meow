@@ -5,7 +5,6 @@ from typing import Optional, List, Literal
 from .logger import setup_logger
 import cv2
 import numpy as np
-from enum import Enum
 
 logger = setup_logger(__name__)
 
@@ -123,9 +122,8 @@ def burn_logo_ffmpeg(video_path: str, gif_path: str, output_path: str, text: Opt
                         output_path,
                         acodec='copy',          # Copy audio codec
                         vcodec='h264_nvenc',    # NVIDIA GPU encoding
+                        crf=24,                  
                         **{
-                            'b:v': '5M',        # Video bitrate (fixed ambiguity)
-                            'preset': 'p1',     # Fastest NVIDIA preset
                             't': duration,      # Force output duration
                         })
                  .global_args('-nostdin', '-y'))
@@ -144,13 +142,11 @@ def burn_logo_ffmpeg(video_path: str, gif_path: str, output_path: str, text: Opt
                  .output(video,
                         main.audio,
                         output_path,
-                        acodec='copy',           # Copy audio codec
-                        vcodec='libx264',        # x264 CPU encoding
-                        preset='ultrafast',      # Fastest encoding preset
-                        tune='fastdecode',       # Optimize for decoding speed
-                        crf=27,                  # Quality (23-28 is good range)
-                        threads='auto',          # Use all CPU threads
-                        t=duration               # Force output duration
+                        acodec='copy',           
+                        vcodec='libx265',
+                        crf=24,                  
+                        threads='auto',          
+                        t=duration
                         )
                  .global_args('-nostdin', '-y'))
         
@@ -332,8 +328,6 @@ def burn_team_images(video_path: str, output_path: str, team_image_paths: List[s
                         acodec='copy',
                         vcodec='h264_nvenc',
                         **{
-                            'b:v': '5M',
-                            'preset': 'p1',
                             't': duration,
                         })
                  .global_args('-nostdin', '-y'))
@@ -351,10 +345,8 @@ def burn_team_images(video_path: str, output_path: str, team_image_paths: List[s
                         main.audio,
                         output_path,
                         acodec='copy',
-                        vcodec='libx264',
-                        preset='ultrafast',
-                        tune='fastdecode',
-                        crf=27,
+                        vcodec='libx265',
+                        crf=24,                  
                         threads='auto',
                         t=duration
                         )
